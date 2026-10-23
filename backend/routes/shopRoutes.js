@@ -1,0 +1,26 @@
+const express = require('express');
+const router = express.Router();
+const shopController = require('../controllers/shopController');
+
+// Products & Stock
+router.get('/products', shopController.getProducts);
+router.post('/products', shopController.createProduct);
+router.put('/products/:id', shopController.updateProduct);
+router.post('/stock-in', shopController.addStockPurchase);
+router.delete('/stock-in/:id', shopController.deleteStockPurchase);
+
+// Sales & Services (Create, Edit, Delete)
+router.post('/sales-services', shopController.addSaleOrService);
+router.put('/sales-services/:id', shopController.updateSaleOrService);
+router.delete('/sales-services/:id', shopController.deleteSaleOrService);
+
+// Expenses (Create, Edit, Delete)
+router.post('/expenses', shopController.addExpense);
+router.put('/expenses/:id', shopController.updateExpense);
+router.delete('/expenses/:id', shopController.deleteExpense);
+
+// Reports (Daily & Monthly)
+router.get('/reports/daily', shopController.getDailySummary);
+router.get('/reports/monthly', shopController.getMonthlyReport);
+
+module.exports = router;

@@ -1,0 +1,21 @@
+# Dependencies
+node_modules/
+backend/node_modules/
+
+# Environment variables and secrets
+.env
+.env.*
+!.env.example
+
+# MongoDB runtime database files
+backend/shop_database/
+**/shop_database/
+**/data/db/
+
+# Logs
+*.log
+npm-debug.log*
+
+# Build output
+dist/
+build/
