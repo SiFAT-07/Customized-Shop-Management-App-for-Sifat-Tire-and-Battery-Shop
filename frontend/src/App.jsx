@@ -4,8 +4,8 @@ import {
   Calendar, TrendingUp, AlertTriangle, Layers, BarChart3, Home, Check, X 
 } from 'lucide-react';
 
-// আপনার ব্যাকএন্ড সার্ভারের URL (লোকালহোস্ট বা রেন্ডার/ভার্সেল এর লিংক)
-const API_BASE = 'http://localhost:5000/api/shop';
+// Set VITE_API_BASE in frontend/.env.local for local or Vercel deployment.
+const API_BASE = `${import.meta.env.VITE_API_BASE || 'http://localhost:5000'}/api/shop`;
 const getLocalDateInputValue = (date = new Date()) => {
   const year = date.getFullYear();
   const month = String(date.getMonth() + 1).padStart(2, '0');

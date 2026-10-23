@@ -8,8 +8,17 @@ const shopRoutes = require('./routes/shopRoutes');
 
 const app = express();
 
-app.use(cors());
+const allowedOrigin = process.env.FRONTEND_URL;
+app.use(cors(allowedOrigin ? { origin: allowedOrigin } : undefined));
 app.use(express.json());
+
+app.get('/health', (req, res) => {
+  res.json({
+    success: true,
+    service: 'sifat-tyre-battery-api',
+    database: mongoose.connection.readyState === 1 ? 'connected' : 'disconnected'
+  });
+});
 
 app.use('/api/shop', shopRoutes);
 
@@ -25,6 +34,9 @@ async function startServer() {
       await mongoose.connect(MONGO_URI, { serverSelectionTimeoutMS: 2000 });
       console.log('✅ Connected to Standard MongoDB!');
     } catch (localErr) {
+      if (process.env.NODE_ENV === 'production') {
+        throw new Error('MONGO_URI must be configured in production.');
+      }
       // পিসিতে MongoDB চালু না থাকলে অটোমেটিক বিল্ট-ইন ডাটাবেজ চালু করবে
       console.log('⚡ Local MongoDB service off. Starting built-in portable MongoDB...');
       const { MongoMemoryServer } = require('mongodb-memory-server');
@@ -49,7 +61,12 @@ async function startServer() {
     });
   } catch (err) {
     console.error('❌ Server Error:', err.message);
+    process.exitCode = 1;
   }
 }
 
-startServer();
+if (require.main === module) {
+  startServer();
+}
+
+module.exports = { app, startServer };
