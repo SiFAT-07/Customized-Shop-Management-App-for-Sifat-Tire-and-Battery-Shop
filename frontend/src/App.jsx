@@ -29,12 +29,51 @@ const submitRequest = async (url, options) => {
         : technicalMessage || 'অনুরোধটি সম্পন্ন করা যায়নি।';
       throw new Error(friendlyMessage);
     }
+    window.dispatchEvent(new CustomEvent('shop:toast', {
+      detail: { type: 'success', message: 'সফলভাবে সেভ হয়েছে' }
+    }));
     return true;
   } catch (error) {
-    window.alert(error.message || 'সার্ভারের সাথে যোগাযোগ করা যাচ্ছে না। দয়া করে আবার চেষ্টা করুন।');
+    window.dispatchEvent(new CustomEvent('shop:toast', {
+      detail: { type: 'error', message: error.message || 'সার্ভারের সাথে যোগাযোগ করা যাচ্ছে না।' }
+    }));
     return false;
   }
 };
+
+function Spinner({ className = 'w-4 h-4' }) {
+  return <span className={`inline-block rounded-full border-2 border-current border-r-transparent animate-spin ${className}`} aria-label="লোড হচ্ছে" />;
+}
+
+function LoadingOverlay() {
+  return (
+    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-950/20 backdrop-blur-[1px]" role="status">
+      <div className="flex items-center gap-3 rounded-2xl bg-white px-5 py-4 shadow-xl">
+        <Spinner className="h-5 w-5 text-emerald-700" />
+        <span className="text-sm font-bold text-slate-700">তথ্য লোড হচ্ছে...</span>
+      </div>
+    </div>
+  );
+}
+
+function Toast({ toast, onClose }) {
+  if (!toast) return null;
+  return (
+    <div className={`fixed left-3 right-3 top-4 z-[70] mx-auto max-w-sm rounded-xl border px-4 py-3 text-sm font-bold shadow-lg ${
+      toast.type === 'error'
+        ? 'border-rose-200 bg-rose-50 text-rose-800'
+        : 'border-emerald-200 bg-emerald-50 text-emerald-800'
+    }`} role="status">
+      <div className="flex items-center justify-between gap-3">
+        <span>{toast.message}</span>
+        <button onClick={onClose} className="rounded-lg p-1 text-current/70 hover:bg-black/5" aria-label="বন্ধ করুন"><X className="h-4 w-4" /></button>
+      </div>
+    </div>
+  );
+}
+
+const interactiveButton = 'transition-all duration-150 active:scale-95 hover:shadow-md focus:outline-none focus:ring-2 focus:ring-emerald-500/50 disabled:cursor-not-allowed disabled:opacity-60';
+const inputClasses = 'focus:outline-none focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500 transition-colors';
 
 // বাংলা লেবেল ম্যাপার
 const CATEGORY_LABELS = {
@@ -120,12 +159,26 @@ export default function App() {
   const [expenseCategory, setExpenseCategory] = useState('ALL');
   const [expenseReport, setExpenseReport] = useState({ data: [], summary: { totalCount: 0, totalAmount: 0 } });
   const [expenseViewerOpen, setExpenseViewerOpen] = useState(false);
+  const [toast, setToast] = useState(null);
 
   // Modal States (NONE | SALE | SERVICE | STOCK_IN | EXPENSE | NEW_PRODUCT)
   const [activeModal, setActiveModal] = useState('NONE');
   const [editingSale, setEditingSale] = useState(null);
   const [editingProduct, setEditingProduct] = useState(null);
   const [restockingProduct, setRestockingProduct] = useState(null);
+
+  useEffect(() => {
+    const handleToast = (event) => {
+      setToast(event.detail);
+      window.clearTimeout(handleToast.timeout);
+      handleToast.timeout = window.setTimeout(() => setToast(null), 3200);
+    };
+    window.addEventListener('shop:toast', handleToast);
+    return () => {
+      window.removeEventListener('shop:toast', handleToast);
+      window.clearTimeout(handleToast.timeout);
+    };
+  }, []);
 
   // --- Data Fetching ---
   const fetchProducts = async () => {
@@ -135,6 +188,9 @@ export default function App() {
       if (json.success) setProducts(json.data);
     } catch (err) {
       console.error('Products fetch error:', err);
+      window.dispatchEvent(new CustomEvent('shop:toast', {
+        detail: { type: 'error', message: 'পণ্যের তালিকা লোড করা যায়নি।' }
+      }));
     }
   };
 
@@ -146,6 +202,9 @@ export default function App() {
       if (json.success) setDailyData(json);
     } catch (err) {
       console.error('Daily summary error:', err);
+      window.dispatchEvent(new CustomEvent('shop:toast', {
+        detail: { type: 'error', message: 'আজকের হিসাব লোড করা যায়নি।' }
+      }));
     }
     setLoading(false);
   };
@@ -158,6 +217,9 @@ export default function App() {
       if (json.success) setMonthlyData(json);
     } catch (err) {
       console.error('Monthly report error:', err);
+      window.dispatchEvent(new CustomEvent('shop:toast', {
+        detail: { type: 'error', message: 'মাসিক রিপোর্ট লোড করা যায়নি।' }
+      }));
     }
     setLoading(false);
   };
@@ -176,7 +238,9 @@ export default function App() {
       setExpenseReport(json);
     } catch (err) {
       console.error('Expense report error:', err);
-      window.alert(err.message || 'খরচের রিপোর্ট পাওয়া যায়নি।');
+      window.dispatchEvent(new CustomEvent('shop:toast', {
+        detail: { type: 'error', message: err.message || 'খরচের রিপোর্ট পাওয়া যায়নি।' }
+      }));
     } finally {
       setLoading(false);
     }
@@ -223,9 +287,11 @@ export default function App() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-100 pb-24 font-sans text-slate-900">
+    <div className="min-h-screen bg-[radial-gradient(circle_at_top,_#ecfdf5,_transparent_38%),linear-gradient(135deg,#f8fafc_0%,#eef2ff_100%)] pb-24 font-sans text-slate-900">
+      <Toast toast={toast} onClose={() => setToast(null)} />
+      {loading && <LoadingOverlay />}
       {/* Top Header */}
-      <header className="bg-emerald-800 text-white p-4 shadow-md sticky top-0 z-20">
+      <header className="bg-gradient-to-r from-emerald-900 via-emerald-800 to-slate-900 text-white p-4 shadow-md sticky top-0 z-20">
         <div className="max-w-xl mx-auto flex justify-between items-center">
           <div>
             <h1 className="text-xl font-bold">টায়ার ও ব্যাটারি হাউজ</h1>
@@ -237,7 +303,7 @@ export default function App() {
               type="date"
               value={selectedDate}
               onChange={(e) => setSelectedDate(e.target.value)}
-              className="bg-transparent text-white text-sm font-semibold focus:outline-none"
+              className={`bg-transparent text-white text-sm font-semibold ${inputClasses}`}
             />
           </div>
         </div>
@@ -253,7 +319,7 @@ export default function App() {
           <>
             {/* 4 Live Summary Cards */}
             <div className="grid grid-cols-2 gap-3">
-              <div className="bg-white p-4 rounded-xl shadow-sm border-l-4 border-blue-600">
+              <div className="bg-gradient-to-br from-white to-blue-50 p-4 rounded-2xl shadow-sm border-l-4 border-blue-600 transition-shadow hover:shadow-md">
                 <p className="text-xs text-slate-500 font-semibold">আজকের মোট বিক্রি ও সার্ভিস</p>
                 <p className="text-2xl font-extrabold text-blue-700 mt-1">
                   ৳ {dailyData.summary.totalSalesRevenue.toLocaleString()}
@@ -263,7 +329,7 @@ export default function App() {
                 </p>
               </div>
 
-              <div className="bg-white p-4 rounded-xl shadow-sm border-l-4 border-emerald-600">
+              <div className="bg-gradient-to-br from-white to-emerald-50 p-4 rounded-2xl shadow-sm border-l-4 border-emerald-600 transition-shadow hover:shadow-md">
                 <p className="text-xs text-slate-500 font-semibold">আজকের মোট লাভ (Gross)</p>
                 <p className="text-2xl font-extrabold text-emerald-700 mt-1">
                   ৳ {dailyData.summary.totalGrossProfit.toLocaleString()}
@@ -273,7 +339,7 @@ export default function App() {
                 </p>
               </div>
 
-              <div className="bg-white p-4 rounded-xl shadow-sm border-l-4 border-rose-500">
+              <div className="bg-gradient-to-br from-white to-rose-50 p-4 rounded-2xl shadow-sm border-l-4 border-rose-500 transition-shadow hover:shadow-md">
                 <p className="text-xs text-slate-500 font-semibold">আজকের দোকানের খরচ</p>
                 <p className="text-2xl font-extrabold text-rose-600 mt-1">
                   ৳ {dailyData.summary.totalDailyExpenses.toLocaleString()}
@@ -281,7 +347,7 @@ export default function App() {
                 <p className="text-[11px] text-slate-500 mt-1">চা-নাস্তা, ভ্যান ভাড়া ও খুচরা</p>
               </div>
 
-              <div className="bg-emerald-900 text-white p-4 rounded-xl shadow-sm">
+              <div className="bg-gradient-to-br from-emerald-900 to-slate-900 text-white p-4 rounded-2xl shadow-md">
                 <p className="text-xs text-emerald-200 font-semibold">খরচ বাদে আজকের নিট লাভ</p>
                 <p className="text-2xl font-extrabold text-yellow-300 mt-1">
                   ৳ {dailyData.summary.netDailyProfit.toLocaleString()}
@@ -296,7 +362,7 @@ export default function App() {
             <div className="grid grid-cols-2 gap-3 pt-1">
               <button
                 onClick={() => { setEditingSale(null); setActiveModal('SALE'); }}
-                className="flex items-center justify-center gap-2 bg-emerald-600 active:bg-emerald-700 text-white font-bold py-4 px-3 rounded-xl shadow-md text-base"
+                className={`${interactiveButton} flex items-center justify-center gap-2 bg-gradient-to-r from-emerald-600 to-emerald-700 text-white font-bold py-4 px-3 rounded-xl shadow-md text-base`}
               >
                 <PlusCircle className="w-6 h-6 shrink-0" />
                 <span>মাল বিক্রি যোগ</span>
@@ -304,7 +370,7 @@ export default function App() {
 
               <button
                 onClick={() => { setEditingSale(null); setActiveModal('SERVICE'); }}
-                className="flex items-center justify-center gap-2 bg-blue-600 active:bg-blue-700 text-white font-bold py-4 px-3 rounded-xl shadow-md text-base"
+                className={`${interactiveButton} flex items-center justify-center gap-2 bg-gradient-to-r from-blue-600 to-indigo-700 text-white font-bold py-4 px-3 rounded-xl shadow-md text-base`}
               >
                 <Wrench className="w-6 h-6 shrink-0" />
                 <span>চার্জ / ভলকানাইজিং</span>
@@ -312,7 +378,7 @@ export default function App() {
 
               <button
                 onClick={() => setActiveModal('STOCK_IN')}
-                className="flex items-center justify-center gap-2 bg-amber-600 active:bg-amber-700 text-white font-bold py-4 px-3 rounded-xl shadow-md text-base"
+                className={`${interactiveButton} flex items-center justify-center gap-2 bg-gradient-to-r from-amber-500 to-orange-600 text-white font-bold py-4 px-3 rounded-xl shadow-md text-base`}
               >
                 <PackagePlus className="w-6 h-6 shrink-0" />
                 <span>দোকানে মাল তুলুন</span>
@@ -320,7 +386,7 @@ export default function App() {
 
               <button
                 onClick={() => setActiveModal('EXPENSE')}
-                className="flex items-center justify-center gap-2 bg-rose-600 active:bg-rose-700 text-white font-bold py-4 px-3 rounded-xl shadow-md text-base"
+                className={`${interactiveButton} flex items-center justify-center gap-2 bg-gradient-to-r from-rose-600 to-red-700 text-white font-bold py-4 px-3 rounded-xl shadow-md text-base`}
               >
                 <Wallet className="w-6 h-6 shrink-0" />
                 <span>দোকানের খরচ লিখুন</span>
@@ -724,7 +790,7 @@ export default function App() {
         <div className="max-w-xl mx-auto grid grid-cols-4">
           <button
             onClick={() => setActiveTab('HOME')}
-            className={`flex flex-col items-center py-3 font-bold text-xs ${
+            className={`${interactiveButton} flex flex-col items-center py-3 font-bold text-xs ${
               activeTab === 'HOME' ? 'text-emerald-700 bg-emerald-50 border-t-4 border-emerald-700' : 'text-slate-500'
             }`}
           >
@@ -734,7 +800,7 @@ export default function App() {
 
           <button
             onClick={() => setActiveTab('STOCK')}
-            className={`flex flex-col items-center py-3 font-bold text-xs ${
+            className={`${interactiveButton} flex flex-col items-center py-3 font-bold text-xs ${
               activeTab === 'STOCK' ? 'text-emerald-700 bg-emerald-50 border-t-4 border-emerald-700' : 'text-slate-500'
             }`}
           >
@@ -744,7 +810,7 @@ export default function App() {
 
           <button
             onClick={() => setActiveTab('MONTHLY')}
-            className={`flex flex-col items-center py-3 font-bold text-xs ${
+            className={`${interactiveButton} flex flex-col items-center py-3 font-bold text-xs ${
               activeTab === 'MONTHLY' ? 'text-emerald-700 bg-emerald-50 border-t-4 border-emerald-700' : 'text-slate-500'
             }`}
           >
@@ -754,7 +820,7 @@ export default function App() {
 
           <button
             onClick={() => setActiveTab('EXPENSES')}
-            className={`flex flex-col items-center py-3 font-bold text-xs ${
+            className={`${interactiveButton} flex flex-col items-center py-3 font-bold text-xs ${
               activeTab === 'EXPENSES' ? 'text-emerald-700 bg-emerald-50 border-t-4 border-emerald-700' : 'text-slate-500'
             }`}
           >
@@ -780,6 +846,7 @@ function ProductSaleModal({ products, editingSale, selectedDate, onClose, onSucc
   const [unitBuyingPrice, setUnitBuyingPrice] = useState(editingSale?.unitBuyingPrice || '');
   const [unitSellingPrice, setUnitSellingPrice] = useState(editingSale?.unitSellingPrice || '');
   const [note, setNote] = useState(editingSale?.note || '');
+  const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
     setIsDirectFromOutside(Boolean(editingSale?.isDirectFromOutside));
@@ -831,12 +898,17 @@ function ProductSaleModal({ products, editingSale, selectedDate, onClose, onSucc
     const url = editingSale ? `${API_BASE}/sales-services/${editingSale._id}` : `${API_BASE}/sales-services`;
     const method = editingSale ? 'PUT' : 'POST';
 
-    const saved = await submitRequest(url, {
-      method,
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload)
-    });
-    if (saved) onSuccess();
+    setSubmitting(true);
+    try {
+      const saved = await submitRequest(url, {
+        method,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      if (saved) onSuccess();
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   return (
@@ -907,7 +979,7 @@ function ProductSaleModal({ products, editingSale, selectedDate, onClose, onSucc
                   required
                   value={productId}
                   onChange={(e) => handleProductSelect(e.target.value)}
-                  className="w-full border-2 border-slate-300 rounded-xl p-3.5 text-base font-bold bg-white"
+                  className={`w-full border-2 border-slate-300 rounded-xl p-3.5 text-base font-bold bg-white ${inputClasses}`}
                 >
                   <option value="">-- মাল সিলেক্ট করুন --</option>
                   {filteredProducts.map(p => (
@@ -946,7 +1018,7 @@ function ProductSaleModal({ products, editingSale, selectedDate, onClose, onSucc
                 min="1"
                 value={quantity}
                 onChange={(e) => setQuantity(e.target.value)}
-                className="w-24 text-center border-2 border-slate-300 rounded-xl h-12 text-xl font-extrabold"
+                className={`w-24 text-center border-2 border-slate-300 rounded-xl h-12 text-xl font-extrabold ${inputClasses}`}
               />
               <button
                 type="button"
@@ -966,7 +1038,7 @@ function ProductSaleModal({ products, editingSale, selectedDate, onClose, onSucc
                 placeholder="কেনা দাম"
                 value={unitBuyingPrice}
                 onChange={(e) => setUnitBuyingPrice(e.target.value)}
-                className="w-full border-2 border-slate-300 rounded-xl p-3.5 text-lg font-extrabold bg-slate-50"
+                className={`w-full border-2 border-slate-300 rounded-xl p-3.5 text-lg font-extrabold bg-slate-50 ${inputClasses}`}
               />
             </div>
             <div>
@@ -977,7 +1049,7 @@ function ProductSaleModal({ products, editingSale, selectedDate, onClose, onSucc
                 placeholder="বিক্রির দাম"
                 value={unitSellingPrice}
                 onChange={(e) => setUnitSellingPrice(e.target.value)}
-                className="w-full border-2 border-emerald-500 rounded-xl p-3.5 text-lg font-extrabold"
+                className={`w-full border-2 border-emerald-500 rounded-xl p-3.5 text-lg font-extrabold ${inputClasses}`}
               />
             </div>
           </div>
@@ -995,14 +1067,15 @@ function ProductSaleModal({ products, editingSale, selectedDate, onClose, onSucc
             placeholder="নোট (যেমন: কাস্টমার বা দোকানদারের নাম - ঐচ্ছিক)"
             value={note}
             onChange={(e) => setNote(e.target.value)}
-            className="w-full border border-slate-300 rounded-xl p-3 text-sm"
+            className={`w-full border border-slate-300 rounded-xl p-3 text-sm ${inputClasses}`}
           />
 
           <button
             type="submit"
-            className="w-full bg-emerald-600 text-white font-extrabold py-4 rounded-xl text-lg shadow-md flex items-center justify-center gap-2"
+            disabled={submitting}
+            className={`${interactiveButton} w-full bg-emerald-600 text-white font-extrabold py-4 rounded-xl text-lg shadow-md flex items-center justify-center gap-2`}
           >
-            <Check className="w-6 h-6" /> হিসাব সেভ করুন
+            {submitting ? <Spinner /> : <Check className="w-6 h-6" />} {submitting ? 'সেভ হচ্ছে...' : 'হিসাব সেভ করুন'}
           </button>
         </form>
       </div>
@@ -1017,6 +1090,7 @@ function ServiceEntryModal({ editingSale, selectedDate, onClose, onSuccess }) {
   const [serviceType, setServiceType] = useState(editingSale?.serviceType || 'BATTERY_CHARGE');
   const [amount, setAmount] = useState(editingSale?.unitSellingPrice || '');
   const [note, setNote] = useState(editingSale?.note || '');
+  const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
     setServiceType(editingSale?.serviceType || 'BATTERY_CHARGE');
@@ -1040,12 +1114,17 @@ function ServiceEntryModal({ editingSale, selectedDate, onClose, onSuccess }) {
     const url = editingSale ? `${API_BASE}/sales-services/${editingSale._id}` : `${API_BASE}/sales-services`;
     const method = editingSale ? 'PUT' : 'POST';
 
-    const saved = await submitRequest(url, {
-      method,
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload)
-    });
-    if (saved) onSuccess();
+    setSubmitting(true);
+    try {
+      const saved = await submitRequest(url, {
+        method,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      if (saved) onSuccess();
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   return (
@@ -1061,7 +1140,7 @@ function ServiceEntryModal({ editingSale, selectedDate, onClose, onSuccess }) {
             <button
               type="button"
               onClick={() => setServiceType('BATTERY_CHARGE')}
-              className={`py-4 rounded-xl font-bold text-base border-2 ${
+              className={`${interactiveButton} py-4 rounded-xl font-bold text-base border-2 ${
                 serviceType === 'BATTERY_CHARGE' ? 'bg-blue-600 text-white border-blue-600' : 'bg-slate-50 text-slate-700'
               }`}
             >
@@ -1070,7 +1149,7 @@ function ServiceEntryModal({ editingSale, selectedDate, onClose, onSuccess }) {
             <button
               type="button"
               onClick={() => setServiceType('VULCANIZING')}
-              className={`py-4 rounded-xl font-bold text-base border-2 ${
+              className={`${interactiveButton} py-4 rounded-xl font-bold text-base border-2 ${
                 serviceType === 'VULCANIZING' ? 'bg-blue-600 text-white border-blue-600' : 'bg-slate-50 text-slate-700'
               }`}
             >
@@ -1086,7 +1165,7 @@ function ServiceEntryModal({ editingSale, selectedDate, onClose, onSuccess }) {
               placeholder="টাকার পরিমাণ লিখুন"
               value={amount}
               onChange={(e) => setAmount(e.target.value)}
-              className="w-full border-2 border-blue-500 rounded-xl p-4 text-2xl font-extrabold"
+              className={`w-full border-2 border-blue-500 rounded-xl p-4 text-2xl font-extrabold ${inputClasses}`}
             />
           </div>
 
@@ -1095,11 +1174,11 @@ function ServiceEntryModal({ editingSale, selectedDate, onClose, onSuccess }) {
             placeholder="নোট (ঐচ্ছিক)"
             value={note}
             onChange={(e) => setNote(e.target.value)}
-            className="w-full border border-slate-300 rounded-xl p-3 text-sm"
+            className={`w-full border border-slate-300 rounded-xl p-3 text-sm ${inputClasses}`}
           />
 
-          <button type="submit" className="w-full bg-blue-600 text-white font-extrabold py-4 rounded-xl text-lg shadow-md">
-            সেভ করুন
+          <button type="submit" disabled={submitting} className={`${interactiveButton} w-full bg-blue-600 text-white font-extrabold py-4 rounded-xl text-lg shadow-md flex items-center justify-center gap-2`}>
+            {submitting ? <Spinner /> : <Check className="w-5 h-5" />} {submitting ? 'সেভ হচ্ছে...' : 'সেভ করুন'}
           </button>
         </form>
       </div>
@@ -1118,6 +1197,7 @@ function StockInModal({ products, selectedDate, initialProduct = null, onClose, 
   const [newRetailPrice, setNewRetailPrice] = useState('');
   const [newWholesalePrice, setNewWholesalePrice] = useState('');
   const [supplierName, setSupplierName] = useState('');
+  const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
     if (initialProduct) {
@@ -1142,21 +1222,26 @@ function StockInModal({ products, selectedDate, initialProduct = null, onClose, 
     e.preventDefault();
     if (!productId || !Number.isInteger(Number(quantity)) || Number(quantity) < 1 ||
       !Number.isFinite(Number(unitBuyingPrice)) || Number(unitBuyingPrice) < 0) return;
-    const saved = await submitRequest(`${API_BASE}/stock-in`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        productId,
-        sourceType,
-        supplierName,
-        quantity: Number(quantity),
-        unitBuyingPrice: Number(unitBuyingPrice),
-        newRetailPrice: Number(newRetailPrice),
-        newWholesalePrice: Number(newWholesalePrice),
-        date: selectedDate
-      })
-    });
-    if (saved) onSuccess();
+    setSubmitting(true);
+    try {
+      const saved = await submitRequest(`${API_BASE}/stock-in`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          productId,
+          sourceType,
+          supplierName,
+          quantity: Number(quantity),
+          unitBuyingPrice: Number(unitBuyingPrice),
+          newRetailPrice: Number(newRetailPrice),
+          newWholesalePrice: Number(newWholesalePrice),
+          date: selectedDate
+        })
+      });
+      if (saved) onSuccess();
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   return (
@@ -1174,7 +1259,7 @@ function StockInModal({ products, selectedDate, initialProduct = null, onClose, 
             <button
               type="button"
               onClick={() => setSourceType('DEALERSHIP')}
-              className={`py-3 rounded-xl font-bold text-sm border ${
+              className={`${interactiveButton} py-3 rounded-xl font-bold text-sm border ${
                 sourceType === 'DEALERSHIP' ? 'bg-amber-600 text-white' : 'bg-slate-50'
               }`}
             >
@@ -1183,7 +1268,7 @@ function StockInModal({ products, selectedDate, initialProduct = null, onClose, 
             <button
               type="button"
               onClick={() => setSourceType('EXTERNAL_SHOP')}
-              className={`py-3 rounded-xl font-bold text-sm border ${
+              className={`${interactiveButton} py-3 rounded-xl font-bold text-sm border ${
                 sourceType === 'EXTERNAL_SHOP' ? 'bg-amber-600 text-white' : 'bg-slate-50'
               }`}
             >
@@ -1198,7 +1283,7 @@ function StockInModal({ products, selectedDate, initialProduct = null, onClose, 
               value={productId}
               onChange={(e) => handleProductSelect(e.target.value)}
               disabled={Boolean(initialProduct)}
-              className="w-full border-2 border-slate-300 rounded-xl p-3.5 text-base font-bold bg-white"
+              className={`w-full border-2 border-slate-300 rounded-xl p-3.5 text-base font-bold bg-white ${inputClasses}`}
             >
               <option value="">-- মাল সিলেক্ট করুন --</option>
               {products.map(p => (
@@ -1216,7 +1301,7 @@ function StockInModal({ products, selectedDate, initialProduct = null, onClose, 
                 required
                 value={quantity}
                 onChange={(e) => setQuantity(e.target.value)}
-                className="w-full border-2 border-slate-300 rounded-xl p-3 text-lg font-extrabold"
+                className={`w-full border-2 border-slate-300 rounded-xl p-3 text-lg font-extrabold ${inputClasses}`}
               />
             </div>
             <div>
@@ -1226,7 +1311,7 @@ function StockInModal({ products, selectedDate, initialProduct = null, onClose, 
                 min="0"
                 value={newRetailPrice}
                 onChange={(e) => setNewRetailPrice(e.target.value)}
-                className="w-full border-2 border-emerald-400 rounded-xl p-3 text-lg font-extrabold"
+                className={`w-full border-2 border-emerald-400 rounded-xl p-3 text-lg font-extrabold ${inputClasses}`}
               />
             </div>
             <div>
@@ -1236,7 +1321,7 @@ function StockInModal({ products, selectedDate, initialProduct = null, onClose, 
                 min="0"
                 value={newWholesalePrice}
                 onChange={(e) => setNewWholesalePrice(e.target.value)}
-                className="w-full border-2 border-purple-400 rounded-xl p-3 text-lg font-extrabold"
+                className={`w-full border-2 border-purple-400 rounded-xl p-3 text-lg font-extrabold ${inputClasses}`}
               />
             </div>
             <div>
@@ -1246,7 +1331,7 @@ function StockInModal({ products, selectedDate, initialProduct = null, onClose, 
                 required
                 value={unitBuyingPrice}
                 onChange={(e) => setUnitBuyingPrice(e.target.value)}
-                className="w-full border-2 border-amber-500 rounded-xl p-3 text-lg font-extrabold"
+                className={`w-full border-2 border-amber-500 rounded-xl p-3 text-lg font-extrabold ${inputClasses}`}
               />
             </div>
           </div>
@@ -1256,11 +1341,11 @@ function StockInModal({ products, selectedDate, initialProduct = null, onClose, 
             placeholder="ডিলার বা দোকানের নাম (ঐচ্ছিক)"
             value={supplierName}
             onChange={(e) => setSupplierName(e.target.value)}
-            className="w-full border border-slate-300 rounded-xl p-3 text-sm"
+            className={`w-full border border-slate-300 rounded-xl p-3 text-sm ${inputClasses}`}
           />
 
-          <button type="submit" className="w-full bg-amber-600 text-white font-extrabold py-4 rounded-xl text-lg shadow-md">
-            স্টকে যোগ করুন
+          <button type="submit" disabled={submitting} className={`${interactiveButton} w-full bg-amber-600 text-white font-extrabold py-4 rounded-xl text-lg shadow-md flex items-center justify-center gap-2`}>
+            {submitting ? <Spinner /> : <PackagePlus className="w-5 h-5" />} {submitting ? 'সেভ হচ্ছে...' : 'স্টকে যোগ করুন'}
           </button>
         </form>
       </div>
@@ -1276,6 +1361,7 @@ function ExpenseModal({ selectedDate, onClose, onSuccess }) {
   const [category, setCategory] = useState('TEA_SNACKS');
   const [amount, setAmount] = useState('');
   const [note, setNote] = useState('');
+  const [submitting, setSubmitting] = useState(false);
 
   const dailyCats = ['TEA_SNACKS', 'TRANSPORT', 'DAILY_LABOR', 'SHOP_SUPPLIES', 'OTHER_DAILY'];
   const monthlyCats = ['SHOP_RENT', 'STAFF_SALARY', 'ELECTRICITY_BILL', 'OTHER_MONTHLY'];
@@ -1288,18 +1374,23 @@ function ExpenseModal({ selectedDate, onClose, onSuccess }) {
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!Number.isFinite(Number(amount)) || Number(amount) < 0) return;
-    const saved = await submitRequest(`${API_BASE}/expenses`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        expenseType,
-        category,
-        amount: Number(amount),
-        date: selectedDate,
-        note
-      })
-    });
-    if (saved) onSuccess();
+    setSubmitting(true);
+    try {
+      const saved = await submitRequest(`${API_BASE}/expenses`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          expenseType,
+          category,
+          amount: Number(amount),
+          date: selectedDate,
+          note
+        })
+      });
+      if (saved) onSuccess();
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   return (
@@ -1315,7 +1406,7 @@ function ExpenseModal({ selectedDate, onClose, onSuccess }) {
             <button
               type="button"
               onClick={() => handleTypeSwitch('DAILY')}
-              className={`py-3 rounded-xl font-bold text-sm border ${
+              className={`${interactiveButton} py-3 rounded-xl font-bold text-sm border ${
                 expenseType === 'DAILY' ? 'bg-rose-600 text-white' : 'bg-slate-50'
               }`}
             >
@@ -1324,7 +1415,7 @@ function ExpenseModal({ selectedDate, onClose, onSuccess }) {
             <button
               type="button"
               onClick={() => handleTypeSwitch('MONTHLY_FIXED')}
-              className={`py-3 rounded-xl font-bold text-sm border ${
+              className={`${interactiveButton} py-3 rounded-xl font-bold text-sm border ${
                 expenseType === 'MONTHLY_FIXED' ? 'bg-rose-800 text-white' : 'bg-slate-50'
               }`}
             >
@@ -1338,7 +1429,7 @@ function ExpenseModal({ selectedDate, onClose, onSuccess }) {
                 key={cat}
                 type="button"
                 onClick={() => setCategory(cat)}
-                className={`p-3 rounded-xl text-xs font-bold border text-left ${
+                className={`${interactiveButton} p-3 rounded-xl text-xs font-bold border text-left ${
                   category === cat ? 'bg-rose-100 border-rose-600 text-rose-900' : 'bg-slate-50 border-slate-200'
                 }`}
               >
@@ -1355,7 +1446,7 @@ function ExpenseModal({ selectedDate, onClose, onSuccess }) {
               placeholder="টাকার পরিমাণ"
               value={amount}
               onChange={(e) => setAmount(e.target.value)}
-              className="w-full border-2 border-rose-500 rounded-xl p-4 text-2xl font-extrabold"
+              className={`w-full border-2 border-rose-500 rounded-xl p-4 text-2xl font-extrabold ${inputClasses}`}
             />
           </div>
 
@@ -1364,11 +1455,11 @@ function ExpenseModal({ selectedDate, onClose, onSuccess }) {
             placeholder="বিবরণ বা নোট (ঐচ্ছিক)"
             value={note}
             onChange={(e) => setNote(e.target.value)}
-            className="w-full border border-slate-300 rounded-xl p-3 text-sm"
+            className={`w-full border border-slate-300 rounded-xl p-3 text-sm ${inputClasses}`}
           />
 
-          <button type="submit" className="w-full bg-rose-600 text-white font-extrabold py-4 rounded-xl text-lg shadow-md">
-            খরচ সেভ করুন
+          <button type="submit" disabled={submitting} className={`${interactiveButton} w-full bg-rose-600 text-white font-extrabold py-4 rounded-xl text-lg shadow-md flex items-center justify-center gap-2`}>
+            {submitting ? <Spinner /> : <Wallet className="w-5 h-5" />} {submitting ? 'সেভ হচ্ছে...' : 'খরচ সেভ করুন'}
           </button>
         </form>
       </div>
@@ -1601,22 +1692,29 @@ function ProductMasterModal({ product, onClose, onSuccess }) {
   const [defaultRetailPrice, setDefaultRetailPrice] = useState(product?.defaultRetailPrice ?? '');
   const [defaultWholesalePrice, setDefaultWholesalePrice] = useState(product?.defaultWholesalePrice ?? '');
   const [lowStockAlert, setLowStockAlert] = useState(product?.lowStockAlert ?? 2);
+  const [submitting, setSubmitting] = useState(false);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!name.trim() || [defaultBuyingPrice, defaultRetailPrice, defaultWholesalePrice, lowStockAlert]
       .some(value => !Number.isFinite(Number(value)) || Number(value) < 0)) return;
-    const saved = await submitRequest(`${API_BASE}/products/${product._id}`, {
-      method: 'PUT',
-      body: JSON.stringify({
-        name: name.trim(),
-        defaultBuyingPrice: Number(defaultBuyingPrice),
-        defaultRetailPrice: Number(defaultRetailPrice),
-        defaultWholesalePrice: Number(defaultWholesalePrice),
-        lowStockAlert: Number(lowStockAlert)
-      })
-    });
-    if (saved) onSuccess();
+    setSubmitting(true);
+    try {
+      const saved = await submitRequest(`${API_BASE}/products/${product._id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: name.trim(),
+          defaultBuyingPrice: Number(defaultBuyingPrice),
+          defaultRetailPrice: Number(defaultRetailPrice),
+          defaultWholesalePrice: Number(defaultWholesalePrice),
+          lowStockAlert: Number(lowStockAlert)
+        })
+      });
+      if (saved) onSuccess();
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   return (
@@ -1643,7 +1741,9 @@ function ProductMasterModal({ product, onClose, onSuccess }) {
               <input type="number" min="0" value={lowStockAlert} onChange={(e) => setLowStockAlert(e.target.value)} className="w-full border rounded-xl p-3 text-base mt-1" />
             </label>
           </div>
-          <button type="submit" className="w-full bg-blue-600 text-white font-extrabold py-4 rounded-xl">Update Product</button>
+          <button type="submit" disabled={submitting} className={`${interactiveButton} w-full bg-blue-600 text-white font-extrabold py-4 rounded-xl flex items-center justify-center gap-2`}>
+            {submitting ? <Spinner /> : <Check className="w-5 h-5" />} {submitting ? 'আপডেট হচ্ছে...' : 'Update Product'}
+          </button>
         </form>
       </div>
     </div>
@@ -1661,23 +1761,29 @@ function NewProductModal({ onClose, onSuccess }) {
   const [defaultBuyingPrice, setDefaultBuyingPrice] = useState('');
   const [defaultRetailPrice, setDefaultRetailPrice] = useState('');
   const [defaultWholesalePrice, setDefaultWholesalePrice] = useState('');
+  const [submitting, setSubmitting] = useState(false);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    await fetch(`${API_BASE}/products`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        name,
-        category,
-        condition: (category === 'MOBIL' || category === 'BATTERY_WATER') ? 'NA' : condition,
-        currentStock: Number(currentStock),
-        defaultBuyingPrice: Number(defaultBuyingPrice),
-        defaultRetailPrice: Number(defaultRetailPrice || 0),
-        defaultWholesalePrice: Number(defaultWholesalePrice || 0)
-      })
-    });
-    onSuccess();
+    setSubmitting(true);
+    try {
+      const saved = await submitRequest(`${API_BASE}/products`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name,
+          category,
+          condition: (category === 'MOBIL' || category === 'BATTERY_WATER') ? 'NA' : condition,
+          currentStock: Number(currentStock),
+          defaultBuyingPrice: Number(defaultBuyingPrice),
+          defaultRetailPrice: Number(defaultRetailPrice || 0),
+          defaultWholesalePrice: Number(defaultWholesalePrice || 0)
+        })
+      });
+      if (saved) onSuccess();
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   return (
@@ -1774,8 +1880,8 @@ function NewProductModal({ onClose, onSuccess }) {
             </div>
           </div>
 
-          <button type="submit" className="w-full bg-emerald-700 text-white font-extrabold py-4 rounded-xl text-base shadow-md">
-            তালিকায় যোগ করুন
+          <button type="submit" disabled={submitting} className={`${interactiveButton} w-full bg-emerald-700 text-white font-extrabold py-4 rounded-xl text-base shadow-md flex items-center justify-center gap-2`}>
+            {submitting ? <Spinner /> : <PlusCircle className="w-5 h-5" />} {submitting ? 'যোগ হচ্ছে...' : 'তালিকায় যোগ করুন'}
           </button>
         </form>
       </div>
