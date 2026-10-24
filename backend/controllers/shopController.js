@@ -571,6 +571,57 @@ exports.getDailySummary = async (req, res) => {
   }
 };
 
+// Analytics endpoint is defined at module load so the router can register it safely.
+exports.getAnalyticsSummary = async (req, res) => {
+  try {
+    const period = String(req.query.period || 'daily').toLowerCase();
+    if (!['daily', 'weekly', 'monthly'].includes(period)) return res.status(400).json({ success: false, message: 'অ্যানালিটিক্সের সময়কাল সঠিক নয়।' });
+    const now = new Date();
+    let start = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    if (period === 'weekly') {
+      const day = start.getDay();
+      start.setDate(start.getDate() - (day === 0 ? 6 : day - 1));
+    } else if (period === 'monthly') start = new Date(now.getFullYear(), now.getMonth(), 1);
+    const end = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
+    const match = { date: { $gte: start, $lte: end } };
+    const [sales, expenses] = await Promise.all([
+      SaleAndService.find(match).populate('product', 'name category').lean(),
+      Expense.find(match).select('date amount').lean()
+    ]);
+    const slots = ['সকাল (৯-১২টা)', 'দুপুর (১২-৪টা)', 'সন্ধ্যা (৪-৯টা)', 'অন্যান্য সময়'];
+    const days = ['রবি', 'সোম', 'মঙ্গল', 'বুধ', 'বৃহস্পতি', 'শুক্র', 'শনি'];
+    const byTimeSlot = Object.fromEntries(slots.map((slot) => [slot, { slot, revenue: 0, profit: 0, count: 0 }]));
+    const byDay = Object.fromEntries(days.map((day) => [day, { day, revenue: 0, profit: 0, count: 0 }]));
+    const items = {}, categories = {}, trend = {};
+    sales.forEach((sale) => {
+      const date = new Date(sale.date), hour = date.getHours();
+      const slot = hour >= 9 && hour < 12 ? slots[0] : hour >= 12 && hour < 16 ? slots[1] : hour >= 16 && hour < 21 ? slots[2] : slots[3];
+      const name = sale.entryType === 'SERVICE' ? (sale.serviceType === 'BATTERY_CHARGE' ? 'ব্যাটারি চার্জ' : sale.serviceType === 'VULCANIZING' ? 'ভলকানাইজিং' : 'অন্যান্য সার্ভিস') : (sale.product?.name || sale.customProductName || 'অজানা পণ্য');
+      const category = sale.entryType === 'SERVICE' ? 'সার্ভিস চার্জ' : sale.product?.category === 'BATTERY' ? 'ব্যাটারি বিক্রি' : sale.product?.category === 'TIRE' ? 'টায়ার বিক্রি' : 'অন্যান্য পণ্য';
+      const day = days[date.getDay()], dateKey = getLocalDateKey(date);
+      if (!items[name]) items[name] = { name, quantity: 0, revenue: 0, profit: 0 };
+      items[name].quantity += sale.quantity; items[name].revenue += sale.totalSellingPrice; items[name].profit += sale.profit;
+      byTimeSlot[slot].revenue += sale.totalSellingPrice; byTimeSlot[slot].profit += sale.profit; byTimeSlot[slot].count += 1;
+      byDay[day].revenue += sale.totalSellingPrice; byDay[day].profit += sale.profit; byDay[day].count += 1;
+      if (!categories[category]) categories[category] = { name: category, value: 0 };
+      categories[category].value += sale.totalSellingPrice;
+      if (!trend[dateKey]) trend[dateKey] = { date: dateKey, revenue: 0, profit: 0, expenses: 0 };
+      trend[dateKey].revenue += sale.totalSellingPrice; trend[dateKey].profit += sale.profit;
+    });
+    expenses.forEach((expense) => {
+      const key = getLocalDateKey(expense.date);
+      if (!trend[key]) trend[key] = { date: key, revenue: 0, profit: 0, expenses: 0 };
+      trend[key].expenses += expense.amount;
+    });
+    const totalRevenue = sales.reduce((sum, sale) => sum + sale.totalSellingPrice, 0);
+    const grossProfit = sales.reduce((sum, sale) => sum + sale.profit, 0);
+    const totalExpenses = expenses.reduce((sum, expense) => sum + expense.amount, 0);
+    res.json({ success: true, period, summary: { totalRevenue, grossProfit, totalExpenses, netProfit: grossProfit - totalExpenses, transactionCount: sales.length }, byTimeSlot: Object.values(byTimeSlot), byDay: Object.values(byDay), topByQuantity: Object.values(items).sort((a, b) => b.quantity - a.quantity).slice(0, 10), topByProfit: Object.values(items).sort((a, b) => b.profit - a.profit).slice(0, 10), revenueDistribution: Object.values(categories), trend: Object.values(trend).sort((a, b) => a.date.localeCompare(b.date)) });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+};
+
 // মাস শেষের চূড়ান্ত হিসাব (Monthly Complete Report)
 exports.getMonthlyReport = async (req, res) => {
   try {
@@ -619,6 +670,62 @@ exports.getMonthlyReport = async (req, res) => {
       STAFF_SALARY: 0,
       ELECTRICITY_BILL: 0,
       OTHER_MONTHLY: 0
+    };
+
+    const legacyAnalyticsSummary = async (req, res) => {
+      try {
+        const period = String(req.query.period || 'daily').toLowerCase();
+        if (!['daily', 'weekly', 'monthly'].includes(period)) return res.status(400).json({ success: false, message: 'অ্যানালিটিক্সের সময়কাল সঠিক নয়।' });
+        const today = new Date();
+        let start = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+        if (period === 'weekly') {
+          const day = start.getDay();
+          start.setDate(start.getDate() - (day === 0 ? 6 : day - 1));
+        } else if (period === 'monthly') start = new Date(today.getFullYear(), today.getMonth(), 1);
+        const end = new Date(today.getFullYear(), today.getMonth(), today.getDate(), 23, 59, 59, 999);
+        const match = { date: { $gte: start, $lte: end } };
+        const [sales, expenses] = await Promise.all([
+          SaleAndService.aggregate([
+            { $match: match },
+            { $lookup: { from: 'products', localField: 'product', foreignField: '_id', as: 'productInfo' } },
+            { $unwind: { path: '$productInfo', preserveNullAndEmptyArrays: true } },
+            { $project: { entryType: 1, serviceType: 1, quantity: 1, totalSellingPrice: 1, profit: 1, date: 1, itemName: { $ifNull: ['$productInfo.name', '$customProductName'] }, category: { $ifNull: ['$productInfo.category', 'SERVICE'] } } }
+          ]),
+          Expense.aggregate([{ $match: match }, { $group: { _id: null, total: { $sum: '$amount' } } }])
+        ]);
+        const slots = ['সকাল (৯-১২টা)', 'দুপুর (১২-৪টা)', 'সন্ধ্যা (৪-৯টা)', 'অন্যান্য সময়'];
+        const days = ['রবি', 'সোম', 'মঙ্গল', 'বুধ', 'বৃহস্পতি', 'শুক্র', 'শনি'];
+        const byTimeSlot = Object.fromEntries(slots.map((slot) => [slot, { slot, revenue: 0, profit: 0, count: 0 }]));
+        const byDay = Object.fromEntries(days.map((day) => [day, { day, revenue: 0, profit: 0, count: 0 }]));
+        const items = {}, categories = {}, trend = {};
+        sales.forEach((sale) => {
+          const date = new Date(sale.date), hour = date.getHours();
+          const slot = hour >= 9 && hour < 12 ? slots[0] : hour >= 12 && hour < 16 ? slots[1] : hour >= 16 && hour < 21 ? slots[2] : slots[3];
+          const itemName = sale.entryType === 'SERVICE' ? (sale.serviceType === 'BATTERY_CHARGE' ? 'ব্যাটারি চার্জ' : sale.serviceType === 'VULCANIZING' ? 'ভলকানাইজিং' : 'অন্যান্য সার্ভিস') : (sale.itemName || 'অজানা পণ্য');
+          const category = sale.entryType === 'SERVICE' ? 'সার্ভিস চার্জ' : sale.category === 'BATTERY' ? 'ব্যাটারি বিক্রি' : sale.category === 'TIRE' ? 'টায়ার বিক্রি' : 'অন্যান্য পণ্য';
+          const day = days[date.getDay()], dateKey = getLocalDateKey(date);
+          if (!items[itemName]) items[itemName] = { name: itemName, quantity: 0, revenue: 0, profit: 0 };
+          items[itemName].quantity += sale.quantity; items[itemName].revenue += sale.totalSellingPrice; items[itemName].profit += sale.profit;
+          byTimeSlot[slot].revenue += sale.totalSellingPrice; byTimeSlot[slot].profit += sale.profit; byTimeSlot[slot].count += 1;
+          byDay[day].revenue += sale.totalSellingPrice; byDay[day].profit += sale.profit; byDay[day].count += 1;
+          if (!categories[category]) categories[category] = { name: category, value: 0 };
+          categories[category].value += sale.totalSellingPrice;
+          if (!trend[dateKey]) trend[dateKey] = { date: dateKey, revenue: 0, profit: 0, expenses: 0 };
+          trend[dateKey].revenue += sale.totalSellingPrice; trend[dateKey].profit += sale.profit;
+        });
+        const expenseRows = await Expense.find(match).select('date amount').lean();
+        expenseRows.forEach((expense) => {
+          const key = getLocalDateKey(expense.date);
+          if (!trend[key]) trend[key] = { date: key, revenue: 0, profit: 0, expenses: 0 };
+          trend[key].expenses += expense.amount;
+        });
+        const totalRevenue = sales.reduce((sum, sale) => sum + sale.totalSellingPrice, 0);
+        const grossProfit = sales.reduce((sum, sale) => sum + sale.profit, 0);
+        const totalExpenses = expenses[0]?.total || 0;
+        res.json({ success: true, period, summary: { totalRevenue, grossProfit, totalExpenses, netProfit: grossProfit - totalExpenses, transactionCount: sales.length }, byTimeSlot: Object.values(byTimeSlot), byDay: Object.values(byDay), topByQuantity: Object.values(items).sort((a, b) => b.quantity - a.quantity).slice(0, 10), topByProfit: Object.values(items).sort((a, b) => b.profit - a.profit).slice(0, 10), revenueDistribution: Object.values(categories), trend: Object.values(trend).sort((a, b) => a.date.localeCompare(b.date)) });
+      } catch (err) {
+        res.status(500).json({ success: false, message: err.message });
+      }
     };
 
     expenses.forEach(e => {

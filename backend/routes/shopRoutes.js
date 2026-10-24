@@ -24,5 +24,6 @@ router.get('/reports/statement', shopController.getFinancialStatement);
 // Reports (Daily & Monthly)
 router.get('/reports/daily', shopController.getDailySummary);
 router.get('/reports/monthly', shopController.getMonthlyReport);
+router.get('/reports/analytics/summary', shopController.getAnalyticsSummary);
 
 module.exports = router;

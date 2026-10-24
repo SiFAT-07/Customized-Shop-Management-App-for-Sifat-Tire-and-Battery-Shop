@@ -110,6 +110,15 @@ const formatDateTime = (value) => new Date(value).toLocaleString('bn-BD', {
   hour: 'numeric',
   minute: '2-digit'
 });
+const formatTransactionDate = (value) => new Date(value).toLocaleString('bn-BD', {
+  year: 'numeric',
+  month: 'short',
+  day: 'numeric',
+  weekday: 'long',
+  hour: 'numeric',
+  minute: '2-digit',
+  hour12: true
+});
 
 const getPresetRange = (preset) => {
   const today = new Date();
@@ -128,7 +137,7 @@ const getPresetRange = (preset) => {
 };
 
 export default function App() {
-  const [activeTab, setActiveTab] = useState('HOME'); // HOME | STOCK | MONTHLY | EXPENSES
+  const [activeTab, setActiveTab] = useState('HOME'); // HOME | STOCK | MONTHLY | ANALYTICS | EXPENSES
   const [selectedDate, setSelectedDate] = useState(getLocalDateInputValue());
   const [loading, setLoading] = useState(false);
 
@@ -162,6 +171,8 @@ export default function App() {
     summary: { totalCount: 0, totalInflow: 0, totalExpenses: 0, totalProfit: 0, netCashBalance: 0 }
   });
   const [expenseViewerOpen, setExpenseViewerOpen] = useState(false);
+  const [analyticsPeriod, setAnalyticsPeriod] = useState('daily');
+  const [analytics, setAnalytics] = useState(null);
   const [toast, setToast] = useState(null);
 
   // Modal States (NONE | SALE | SERVICE | STOCK_IN | EXPENSE | NEW_PRODUCT)
@@ -249,6 +260,20 @@ export default function App() {
     }
   };
 
+  const fetchAnalytics = async () => {
+    setLoading(true);
+    try {
+      const res = await fetch(`${API_BASE}/reports/analytics/summary?period=${analyticsPeriod}`);
+      const json = await res.json();
+      if (!res.ok || !json.success) throw new Error(json.message || 'অ্যানালিটিক্স লোড করা যায়নি।');
+      setAnalytics(json);
+    } catch (err) {
+      window.dispatchEvent(new CustomEvent('shop:toast', { detail: { type: 'error', message: err.message } }));
+    } finally {
+      setLoading(false);
+    }
+  };
+
   useEffect(() => {
     fetchProducts();
     fetchDailySummary(selectedDate);
@@ -263,6 +288,10 @@ export default function App() {
   useEffect(() => {
     if (activeTab === 'EXPENSES') fetchExpenseReport();
   }, [activeTab, expenseStartDate, expenseEndDate, expenseType]);
+
+  useEffect(() => {
+    if (activeTab === 'ANALYTICS') fetchAnalytics();
+  }, [activeTab, analyticsPeriod]);
 
   const handleExpensePresetChange = (preset) => {
     setExpensePreset(preset);
@@ -440,6 +469,9 @@ export default function App() {
                           <span className={item.profit >= 0 ? 'text-emerald-700 font-bold' : 'text-rose-600 font-bold'}>
                             {item.profit >= 0 ? `লাভ: ৳${item.profit}` : `লস: ৳${Math.abs(item.profit)}`}
                           </span>
+                        </p>
+                        <p className="text-[11px] text-slate-500 flex items-center gap-1">
+                          <Calendar className="w-3 h-3" /> {formatTransactionDate(item.createdAt || item.date)}
                         </p>
                         {item.note && <p className="text-xs text-slate-500 italic">নোট: {item.note}</p>}
                       </div>
@@ -670,6 +702,10 @@ export default function App() {
           </div>
         )}
 
+        {activeTab === 'ANALYTICS' && (
+          <AnalyticsView analytics={analytics} period={analyticsPeriod} onPeriodChange={setAnalyticsPeriod} loading={loading} />
+        )}
+
         {activeTab === 'EXPENSES' && (
           <ExpenseReportView
             expenses={expenseReport.data}
@@ -790,7 +826,7 @@ export default function App() {
 
       {/* Bottom Fixed Navigation Bar (আব্বুর মোবাইলের জন্য) */}
       <nav className="fixed bottom-0 left-0 right-0 bg-white border-t border-slate-300 shadow-lg z-20">
-        <div className="max-w-xl mx-auto grid grid-cols-4">
+        <div className="max-w-xl mx-auto grid grid-cols-5">
           <button
             onClick={() => setActiveTab('HOME')}
             className={`${interactiveButton} flex flex-col items-center py-3 font-bold text-xs ${
@@ -819,6 +855,16 @@ export default function App() {
           >
             <BarChart3 className="w-6 h-6 mb-1" />
             <span>মাসিক লাভ-লস</span>
+          </button>
+
+          <button
+            onClick={() => setActiveTab('ANALYTICS')}
+            className={`${interactiveButton} flex flex-col items-center py-3 font-bold text-xs ${
+              activeTab === 'ANALYTICS' ? 'text-emerald-700 bg-emerald-50 border-t-4 border-emerald-700' : 'text-slate-500'
+            }`}
+          >
+            <TrendingUp className="w-6 h-6 mb-1" />
+            <span>অ্যানালিটিক্স</span>
           </button>
 
           <button
@@ -1466,6 +1512,69 @@ function ExpenseModal({ selectedDate, onClose, onSuccess }) {
           </button>
         </form>
       </div>
+    </div>
+  );
+}
+
+function AnalyticsView({ analytics, period, onPeriodChange, loading }) {
+  const money = (value) => `৳ ${Number(value || 0).toLocaleString('bn-BD')}`;
+  const maxValue = (items, key) => Math.max(...(items || []).map((item) => Number(item[key] || 0)), 1);
+  const BarList = ({ items, labelKey, valueKey, color }) => (
+    <div className="space-y-3">
+      {(items || []).map((item) => (
+        <div key={item[labelKey]}>
+          <div className="flex justify-between text-xs font-bold mb-1">
+            <span>{item[labelKey]}</span><span>{valueKey === 'quantity' ? item[valueKey] : money(item[valueKey])}</span>
+          </div>
+          <div className="h-2 rounded-full bg-slate-100 overflow-hidden">
+            <div className={`h-full ${color} rounded-full`} style={{ width: `${Math.max(3, (Number(item[valueKey] || 0) / maxValue(items, valueKey)) * 100)}%` }} />
+          </div>
+        </div>
+      ))}
+      {!items?.length && <p className="text-sm text-slate-400 text-center py-4">এই সময়ে কোনো তথ্য নেই।</p>}
+    </div>
+  );
+
+  return (
+    <div className="space-y-4">
+      <div className="bg-white rounded-xl shadow-sm p-4">
+        <h2 className="text-lg font-extrabold text-slate-800">হিসাব অ্যানালিটিক্স ও রিপোর্ট</h2>
+        <p className="text-xs text-slate-500 mt-1">বিক্রি, লাভ, খরচ এবং ব্যস্ত সময়ের বিশ্লেষণ</p>
+        <div className="grid grid-cols-3 gap-2 mt-4">
+          {[['daily', 'আজকের'], ['weekly', 'চলতি সপ্তাহ'], ['monthly', 'চলতি মাস']].map(([value, label]) => (
+            <button key={value} onClick={() => onPeriodChange(value)} className={`py-2 rounded-lg text-xs font-bold border ${period === value ? 'bg-emerald-700 text-white border-emerald-700' : 'bg-slate-50 border-slate-200'}`}>{label}</button>
+          ))}
+        </div>
+      </div>
+      {loading && !analytics ? <div className="bg-white rounded-xl p-8 text-center text-slate-500">অ্যানালিটিক্স লোড হচ্ছে...</div> : analytics && (
+        <>
+          <div className="grid grid-cols-2 gap-3">
+            {[
+              ['মোট বিক্রি', analytics.summary.totalRevenue, 'text-emerald-700'],
+              ['মোট লাভ', analytics.summary.grossProfit, 'text-blue-700'],
+              ['মোট খরচ', analytics.summary.totalExpenses, 'text-rose-700'],
+              ['নিট লাভ', analytics.summary.netProfit, analytics.summary.netProfit >= 0 ? 'text-emerald-700' : 'text-rose-700']
+            ].map(([label, value, color]) => <div key={label} className="bg-white rounded-xl shadow-sm p-4 border-l-4 border-slate-200"><p className="text-xs font-bold text-slate-500">{label}</p><p className={`text-xl font-extrabold mt-1 ${color}`}>{money(value)}</p></div>)}
+          </div>
+          <div className="grid lg:grid-cols-2 gap-4">
+            <div className="bg-white rounded-xl shadow-sm p-4"><h3 className="font-extrabold mb-4">সময় অনুযায়ী বিক্রি</h3><BarList items={analytics.byTimeSlot} labelKey="slot" valueKey="revenue" color="bg-amber-500" /></div>
+            <div className="bg-white rounded-xl shadow-sm p-4"><h3 className="font-extrabold mb-4">সপ্তাহের ব্যস্ত দিন</h3><BarList items={analytics.byDay} labelKey="day" valueKey="revenue" color="bg-indigo-500" /></div>
+            <div className="bg-white rounded-xl shadow-sm p-4"><h3 className="font-extrabold mb-4">সবচেয়ে বেশি বিক্রিত আইটেম</h3><BarList items={analytics.topByQuantity} labelKey="name" valueKey="quantity" color="bg-emerald-500" /></div>
+            <div className="bg-white rounded-xl shadow-sm p-4"><h3 className="font-extrabold mb-4">সবচেয়ে লাভজনক আইটেম</h3><BarList items={analytics.topByProfit} labelKey="name" valueKey="profit" color="bg-blue-500" /></div>
+          </div>
+          <div className="bg-white rounded-xl shadow-sm p-4">
+            <h3 className="font-extrabold mb-4">বিক্রি বনাম লাভ বনাম খরচ</h3>
+            <div className="flex items-end gap-2 h-44 overflow-x-auto">
+              {analytics.trend.map((item) => {
+                const scale = Math.max(...analytics.trend.flatMap((row) => [row.revenue, row.profit, row.expenses]), 1);
+                return <div key={item.date} className="min-w-12 h-full flex flex-col justify-end items-center gap-1"><div className="w-full bg-emerald-400 rounded-t" style={{ height: `${Math.max(2, item.revenue / scale * 100)}%` }} title={`বিক্রি ${money(item.revenue)}`} /><div className="w-full bg-blue-400 rounded-t" style={{ height: `${Math.max(2, item.profit / scale * 100)}%` }} title={`লাভ ${money(item.profit)}`} /><div className="w-full bg-rose-400 rounded-t" style={{ height: `${Math.max(2, item.expenses / scale * 100)}%` }} title={`খরচ ${money(item.expenses)}`} /><span className="text-[9px] text-slate-500 rotate-45 mt-2">{item.date.slice(5)}</span></div>;
+              })}
+            </div>
+            <div className="flex gap-4 text-xs font-bold mt-5"><span className="text-emerald-600">■ বিক্রি</span><span className="text-blue-600">■ লাভ</span><span className="text-rose-600">■ খরচ</span></div>
+          </div>
+          <div className="bg-white rounded-xl shadow-sm p-4"><h3 className="font-extrabold mb-4">আয়ের বণ্টন</h3><BarList items={analytics.revenueDistribution} labelKey="name" valueKey="value" color="bg-violet-500" /></div>
+        </>
+      )}
     </div>
   );
 }
