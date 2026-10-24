@@ -156,8 +156,11 @@ export default function App() {
   const [expensePreset, setExpensePreset] = useState('THIS_MONTH');
   const [expenseStartDate, setExpenseStartDate] = useState(initialExpenseRange.startDate);
   const [expenseEndDate, setExpenseEndDate] = useState(initialExpenseRange.endDate);
-  const [expenseCategory, setExpenseCategory] = useState('ALL');
-  const [expenseReport, setExpenseReport] = useState({ data: [], summary: { totalCount: 0, totalAmount: 0 } });
+  const [expenseType, setExpenseType] = useState('ALL');
+  const [expenseReport, setExpenseReport] = useState({
+    data: [],
+    summary: { totalCount: 0, totalInflow: 0, totalExpenses: 0, totalProfit: 0, netCashBalance: 0 }
+  });
   const [expenseViewerOpen, setExpenseViewerOpen] = useState(false);
   const [toast, setToast] = useState(null);
 
@@ -230,16 +233,16 @@ export default function App() {
       const params = new URLSearchParams({
         startDate: expenseStartDate,
         endDate: expenseEndDate,
-        category: expenseCategory
+        type: expenseType
       });
-      const res = await fetch(`${API_BASE}/expenses?${params.toString()}`);
+      const res = await fetch(`${API_BASE}/reports/statement?${params.toString()}`);
       const json = await res.json();
-      if (!res.ok || !json.success) throw new Error(json.message || 'খরচের রিপোর্ট পাওয়া যায়নি।');
+      if (!res.ok || !json.success) throw new Error(json.message || 'হিসাবের রিপোর্ট পাওয়া যায়নি।');
       setExpenseReport(json);
     } catch (err) {
       console.error('Expense report error:', err);
       window.dispatchEvent(new CustomEvent('shop:toast', {
-        detail: { type: 'error', message: err.message || 'খরচের রিপোর্ট পাওয়া যায়নি।' }
+        detail: { type: 'error', message: err.message || 'হিসাবের রিপোর্ট পাওয়া যায়নি।' }
       }));
     } finally {
       setLoading(false);
@@ -259,7 +262,7 @@ export default function App() {
 
   useEffect(() => {
     if (activeTab === 'EXPENSES') fetchExpenseReport();
-  }, [activeTab, expenseStartDate, expenseEndDate, expenseCategory]);
+  }, [activeTab, expenseStartDate, expenseEndDate, expenseType]);
 
   const handleExpensePresetChange = (preset) => {
     setExpensePreset(preset);
@@ -674,12 +677,12 @@ export default function App() {
             preset={expensePreset}
             startDate={expenseStartDate}
             endDate={expenseEndDate}
-            category={expenseCategory}
+            type={expenseType}
             loading={loading}
             onPresetChange={handleExpensePresetChange}
             onStartDateChange={(value) => { setExpensePreset('CUSTOM'); setExpenseStartDate(value); }}
             onEndDateChange={(value) => { setExpensePreset('CUSTOM'); setExpenseEndDate(value); }}
-            onCategoryChange={setExpenseCategory}
+            onTypeChange={setExpenseType}
             onPreview={() => setExpenseViewerOpen(true)}
           />
         )}
@@ -825,7 +828,7 @@ export default function App() {
             }`}
           >
             <FileText className="w-6 h-6 mb-1" />
-            <span>খরচ রিপোর্ট</span>
+            <span>হিসাব রিপোর্ট</span>
           </button>
         </div>
       </nav>
@@ -1473,12 +1476,12 @@ function ExpenseReportView({
   preset,
   startDate,
   endDate,
-  category,
+  type,
   loading,
   onPresetChange,
   onStartDateChange,
   onEndDateChange,
-  onCategoryChange,
+  onTypeChange,
   onPreview
 }) {
   return (
@@ -1486,8 +1489,8 @@ function ExpenseReportView({
       <div className="bg-white rounded-xl shadow-sm p-4 space-y-3">
         <div className="flex justify-between items-center gap-2">
           <div>
-            <h2 className="text-lg font-extrabold text-slate-800">খরচের রিপোর্ট</h2>
-            <p className="text-xs text-slate-500">তারিখ ও খাত অনুযায়ী দোকানের সব খরচ দেখুন</p>
+            <h2 className="text-lg font-extrabold text-slate-800">হিসাব ও লেনদেন রিপোর্ট</h2>
+            <p className="text-xs text-slate-500">বিক্রি, সার্ভিস এবং খরচের সম্পূর্ণ হিসাব</p>
           </div>
           <button
             onClick={onPreview}
@@ -1528,20 +1531,30 @@ function ExpenseReportView({
           </label>
         </div>
 
-        <select value={category} onChange={(e) => onCategoryChange(e.target.value)} className="w-full border rounded-lg p-2.5 text-sm font-bold bg-white">
-          <option value="ALL">সব খরচের খাত</option>
-          {Object.entries(EXPENSE_LABELS).map(([key, label]) => <option key={key} value={key}>{label}</option>)}
+        <select value={type} onChange={(e) => onTypeChange(e.target.value)} className="w-full border rounded-lg p-2.5 text-sm font-bold bg-white">
+          <option value="ALL">সবগুলো</option>
+          <option value="SALE">শুধু মালের বিক্রি</option>
+          <option value="SERVICE">শুধু সার্ভিস</option>
+          <option value="EXPENSE">শুধু খরচ</option>
         </select>
       </div>
 
       <div className="grid grid-cols-2 gap-3">
-        <div className="bg-white rounded-xl shadow-sm p-4 border-l-4 border-blue-600">
-          <p className="text-xs text-slate-500 font-bold">মোট খরচের সংখ্যা</p>
-          <p className="text-2xl font-extrabold text-blue-700 mt-1">{summary.totalCount}</p>
+        <div className="bg-white rounded-xl shadow-sm p-4 border-l-4 border-emerald-600">
+          <p className="text-xs text-slate-500 font-bold">মোট বিক্রি ও সার্ভিস</p>
+          <p className="text-2xl font-extrabold text-emerald-700 mt-1">৳ {summary.totalInflow.toLocaleString()}</p>
         </div>
         <div className="bg-white rounded-xl shadow-sm p-4 border-l-4 border-rose-600">
           <p className="text-xs text-slate-500 font-bold">মোট খরচ</p>
-          <p className="text-2xl font-extrabold text-rose-700 mt-1">৳ {summary.totalAmount.toLocaleString()}</p>
+          <p className="text-2xl font-extrabold text-rose-700 mt-1">৳ {summary.totalExpenses.toLocaleString()}</p>
+        </div>
+        <div className="bg-white rounded-xl shadow-sm p-4 border-l-4 border-blue-600">
+          <p className="text-xs text-slate-500 font-bold">মোট লাভ</p>
+          <p className="text-2xl font-extrabold text-blue-700 mt-1">৳ {summary.totalProfit.toLocaleString()}</p>
+        </div>
+        <div className="bg-white rounded-xl shadow-sm p-4 border-l-4 border-slate-700">
+          <p className="text-xs text-slate-500 font-bold">ক্যাশ জমা / ব্যালেন্স</p>
+          <p className="text-2xl font-extrabold text-slate-800 mt-1">৳ {summary.netCashBalance.toLocaleString()}</p>
         </div>
       </div>
 
@@ -1555,19 +1568,23 @@ function ExpenseReportView({
             <table className="w-full text-left text-xs">
               <thead className="bg-slate-800 text-white">
                 <tr>
-                  <th className="p-3 whitespace-nowrap">তারিখ ও সময়</th>
-                  <th className="p-3 whitespace-nowrap">খরচের খাত</th>
-                  <th className="p-3 min-w-40">বিবরণ / নোট</th>
-                  <th className="p-3 text-right whitespace-nowrap">পরিমাণ (৳)</th>
+                  <th className="p-3 whitespace-nowrap">সময় ও তারিখ</th>
+                  <th className="p-3 whitespace-nowrap">ধরণ / টাইপ</th>
+                  <th className="p-3 min-w-48">বিবরণ / প্রোডাক্ট</th>
+                  <th className="p-3 text-right whitespace-nowrap">বিক্রয় / প্রাপ্তি</th>
+                  <th className="p-3 text-right whitespace-nowrap">খরচ</th>
+                  <th className="p-3 text-right whitespace-nowrap">লাভ</th>
                 </tr>
               </thead>
               <tbody>
-                {expenses.map((expense) => (
-                  <tr key={expense._id} className="border-b last:border-0">
-                    <td className="p-3 whitespace-nowrap">{formatDateTime(expense.date)}</td>
-                    <td className="p-3 font-bold">{EXPENSE_LABELS[expense.category] || expense.category}</td>
-                    <td className="p-3 text-slate-600">{expense.note || '—'}</td>
-                    <td className="p-3 text-right font-extrabold text-rose-700">{expense.amount.toLocaleString()}</td>
+                {expenses.map((item) => (
+                  <tr key={item.id} className="border-b last:border-0">
+                    <td className="p-3 whitespace-nowrap">{formatDateTime(item.date)}</td>
+                    <td className={`p-3 font-bold ${item.type === 'EXPENSE' ? 'text-rose-700' : item.type === 'SERVICE' ? 'text-blue-700' : 'text-emerald-700'}`}>{item.typeLabel}</td>
+                    <td className="p-3 text-slate-600"><b>{item.description}</b>{item.note && <span className="block text-[11px]">{item.note}</span>}</td>
+                    <td className="p-3 text-right font-extrabold text-emerald-700">{item.inflow ? `৳ ${item.inflow.toLocaleString()}` : '—'}</td>
+                    <td className="p-3 text-right font-extrabold text-rose-700">{item.expense ? `- ৳ ${item.expense.toLocaleString()}` : '—'}</td>
+                    <td className="p-3 text-right font-extrabold text-blue-700">{item.type !== 'EXPENSE' ? `৳ ${item.profit.toLocaleString()}` : '—'}</td>
                   </tr>
                 ))}
               </tbody>
@@ -1593,12 +1610,14 @@ function ExpensePdfViewer({ expenses, summary, startDate, endDate, onClose }) {
       window.alert('PDF preview খোলার জন্য browser popup allow করুন।');
       return;
     }
-    const rows = expenses.map((expense) => `
+    const rows = expenses.map((item) => `
       <tr>
-        <td>${escapeHtml(formatDateTime(expense.date))}</td>
-        <td>${escapeHtml(EXPENSE_LABELS[expense.category] || expense.category)}</td>
-        <td>${escapeHtml(expense.note || '—')}</td>
-        <td class="amount">${Number(expense.amount).toLocaleString('bn-BD')}</td>
+        <td>${escapeHtml(formatDateTime(item.date))}</td>
+        <td>${escapeHtml(item.typeLabel)}</td>
+        <td>${escapeHtml(`${item.description}${item.note ? ` — ${item.note}` : ''}`)}</td>
+        <td class="amount">${item.inflow ? Number(item.inflow).toLocaleString('bn-BD') : '—'}</td>
+        <td class="amount">${item.expense ? Number(item.expense).toLocaleString('bn-BD') : '—'}</td>
+        <td class="amount">${item.type !== 'EXPENSE' ? Number(item.profit).toLocaleString('bn-BD') : '—'}</td>
       </tr>
     `).join('');
     printWindow.document.write(`
@@ -1623,13 +1642,13 @@ function ExpensePdfViewer({ expenses, summary, startDate, endDate, onClose }) {
         </head>
         <body>
           <h1>সিফাত টায়ার অ্যান্ড ব্যাটারি শপ</h1>
-          <h2>দোকানের খরচের বিবরণী</h2>
+          <h2>হিসাব ও লেনদেনের সম্পূর্ণ বিবরণী</h2>
           <div class="meta">সময়কাল: ${escapeHtml(startDate)} থেকে ${escapeHtml(endDate)}</div>
           <table>
-            <thead><tr><th>তারিখ ও সময়</th><th>খরচের খাত</th><th>বিবরণ / নোট</th><th>পরিমাণ (৳)</th></tr></thead>
+            <thead><tr><th>তারিখ ও সময়</th><th>ধরণ</th><th>বিবরণ / প্রোডাক্ট</th><th>প্রাপ্তি (৳)</th><th>খরচ (৳)</th><th>লাভ (৳)</th></tr></thead>
             <tbody>${rows}</tbody>
           </table>
-          <div class="total">মোট ${summary.totalCount}টি খরচ — ৳ ${Number(summary.totalAmount).toLocaleString('bn-BD')}</div>
+          <div class="total">মোট প্রাপ্তি: ৳ ${Number(summary.totalInflow).toLocaleString('bn-BD')} | মোট খরচ: ৳ ${Number(summary.totalExpenses).toLocaleString('bn-BD')} | নিট ব্যালেন্স: ৳ ${Number(summary.netCashBalance).toLocaleString('bn-BD')}</div>
           <div class="printed">প্রিন্টের সময়: ${escapeHtml(formatDateTime(new Date()))}</div>
         </body>
       </html>
@@ -1652,25 +1671,27 @@ function ExpensePdfViewer({ expenses, summary, startDate, endDate, onClose }) {
         <div className="p-4 overflow-y-auto">
           <div className="border-2 border-slate-200 p-4 bg-white">
             <h1 className="text-xl font-extrabold text-emerald-800">সিফাত টায়ার অ্যান্ড ব্যাটারি শপ</h1>
-            <p className="text-sm font-bold">দোকানের খরচের বিবরণী</p>
+            <p className="text-sm font-bold">হিসাব ও লেনদেনের সম্পূর্ণ বিবরণী</p>
             <p className="text-xs text-slate-500 mt-1">সময়কাল: {startDate} থেকে {endDate}</p>
             <table className="w-full mt-4 text-xs border-collapse">
               <thead className="bg-emerald-800 text-white">
-                <tr><th className="p-2 border text-left">তারিখ ও সময়</th><th className="p-2 border text-left">খরচের খাত</th><th className="p-2 border text-left">বিবরণ / নোট</th><th className="p-2 border text-right">পরিমাণ (৳)</th></tr>
+                <tr><th className="p-2 border text-left">তারিখ ও সময়</th><th className="p-2 border text-left">ধরণ</th><th className="p-2 border text-left">বিবরণ / প্রোডাক্ট</th><th className="p-2 border text-right">প্রাপ্তি</th><th className="p-2 border text-right">খরচ</th><th className="p-2 border text-right">লাভ</th></tr>
               </thead>
               <tbody>
-                {expenses.map((expense) => (
-                  <tr key={expense._id}>
-                    <td className="p-2 border">{formatDateTime(expense.date)}</td>
-                    <td className="p-2 border">{EXPENSE_LABELS[expense.category] || expense.category}</td>
-                    <td className="p-2 border">{expense.note || '—'}</td>
-                    <td className="p-2 border text-right font-bold">{expense.amount.toLocaleString()}</td>
+                {expenses.map((item) => (
+                  <tr key={item.id}>
+                    <td className="p-2 border">{formatDateTime(item.date)}</td>
+                    <td className="p-2 border">{item.typeLabel}</td>
+                    <td className="p-2 border">{item.description}{item.note ? ` — ${item.note}` : ''}</td>
+                    <td className="p-2 border text-right font-bold">{item.inflow ? item.inflow.toLocaleString() : '—'}</td>
+                    <td className="p-2 border text-right font-bold">{item.expense ? item.expense.toLocaleString() : '—'}</td>
+                    <td className="p-2 border text-right font-bold">{item.type !== 'EXPENSE' ? item.profit.toLocaleString() : '—'}</td>
                   </tr>
                 ))}
               </tbody>
             </table>
             <div className="mt-4 p-3 bg-emerald-50 border-2 border-emerald-600 text-right font-extrabold">
-              মোট {summary.totalCount}টি খরচ — ৳ {summary.totalAmount.toLocaleString()}
+              মোট প্রাপ্তি: ৳ {summary.totalInflow.toLocaleString()} | মোট খরচ: ৳ {summary.totalExpenses.toLocaleString()} | নিট ব্যালেন্স: ৳ {summary.netCashBalance.toLocaleString()}
             </div>
             <p className="text-[10px] text-slate-500 mt-3">প্রিন্টের সময়: {formatDateTime(new Date())}</p>
           </div>

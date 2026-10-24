@@ -19,6 +19,7 @@ router.post('/expenses', shopController.addExpense);
 router.put('/expenses/:id', shopController.updateExpense);
 router.delete('/expenses/:id', shopController.deleteExpense);
 router.get('/expenses', shopController.getExpenses);
+router.get('/reports/statement', shopController.getFinancialStatement);
 
 // Reports (Daily & Monthly)
 router.get('/reports/daily', shopController.getDailySummary);

@@ -3,6 +3,18 @@ const StockPurchase = require('../models/StockPurchase');
 const SaleAndService = require('../models/SaleAndService');
 const Expense = require('../models/Expense');
 
+const EXPENSE_LABELS = {
+  TEA_SNACKS: 'চা-নাস্তা ও আপ্যায়ন',
+  TRANSPORT: 'ভ্যান ভাড়া / মাল আনা-নেওয়া',
+  DAILY_LABOR: 'দৈনিক লেবার / হাজিরা',
+  SHOP_SUPPLIES: 'দোকানের টুকিটাকি মালামাল',
+  OTHER_DAILY: 'অন্যান্য খুচরা খরচ',
+  SHOP_RENT: 'দোকান ভাড়া (মাসিক)',
+  STAFF_SALARY: 'কর্মচারী বেতন (মাসিক)',
+  ELECTRICITY_BILL: 'কারেন্ট বিল (মাসিক)',
+  OTHER_MONTHLY: 'অন্যান্য মাসিক খরচ'
+};
+
 const isFiniteNumber = (value) => Number.isFinite(Number(value));
 
 const parseDate = (value) => {
@@ -407,6 +419,81 @@ exports.getExpenses = async (req, res) => {
       success: true,
       data: expenses,
       summary: { totalCount: expenses.length, totalAmount }
+    });
+  } catch (err) {
+    res.status(400).json({ success: false, message: err.message });
+  }
+};
+
+// Unified income, service, and expense statement.
+exports.getFinancialStatement = async (req, res) => {
+  try {
+    const { startDate, endDate, type = 'ALL' } = req.query;
+    const range = {};
+    if (startDate) range.$gte = getDayBounds(startDate).start;
+    if (endDate) range.$lte = getDayBounds(endDate).end;
+    if (range.$gte && range.$lte && range.$gte > range.$lte) {
+      return res.status(400).json({ success: false, message: 'শুরুর তারিখ শেষের তারিখের পরে হতে পারবে না।' });
+    }
+    const dateFilter = Object.keys(range).length ? { date: range } : {};
+    const [sales, expenses] = await Promise.all([
+      type === 'EXPENSE' ? [] : SaleAndService.find(dateFilter)
+        .populate('product', 'name')
+        .sort({ date: -1, createdAt: -1 }),
+      type === 'SALE' || type === 'SERVICE' ? [] : Expense.find(dateFilter)
+        .sort({ date: -1, createdAt: -1 })
+    ]);
+
+    const transactions = [];
+    if (type !== 'EXPENSE') {
+      sales.forEach((sale) => {
+        const isService = sale.entryType === 'SERVICE';
+        transactions.push({
+          id: String(sale._id),
+          date: sale.date,
+          type: isService ? 'SERVICE' : 'SALE',
+          typeLabel: isService ? 'সার্ভিস চার্জ' : 'মালের বিক্রি',
+          description: isService
+            ? (sale.serviceType === 'BATTERY_CHARGE' ? 'ব্যাটারি চার্জ' : sale.serviceType === 'VULCANIZING' ? 'ভলকানাইজিং' : 'অন্যান্য সার্ভিস')
+            : `${sale.product?.name || sale.customProductName || 'পণ্য বিক্রি'} × ${sale.quantity} পিস`,
+          note: sale.note || '',
+          inflow: sale.totalSellingPrice,
+          expense: 0,
+          profit: sale.profit,
+          quantity: sale.quantity,
+          unitSellingPrice: sale.unitSellingPrice
+        });
+      });
+    }
+    if (type !== 'SALE' && type !== 'SERVICE') {
+      expenses.forEach((expense) => {
+        transactions.push({
+          id: String(expense._id),
+          date: expense.date,
+          type: 'EXPENSE',
+          typeLabel: 'দোকানের খরচ',
+          description: EXPENSE_LABELS[expense.category] || expense.category,
+          note: expense.note || '',
+          inflow: 0,
+          expense: expense.amount,
+          profit: 0
+        });
+      });
+    }
+    transactions.sort((a, b) => new Date(b.date) - new Date(a.date));
+    const totalInflow = transactions.reduce((sum, item) => sum + item.inflow, 0);
+    const totalExpenses = transactions.reduce((sum, item) => sum + item.expense, 0);
+    const totalProfit = transactions.reduce((sum, item) => sum + item.profit, 0) - totalExpenses;
+    res.json({
+      success: true,
+      data: transactions,
+      summary: {
+        totalCount: transactions.length,
+        totalInflow,
+        totalExpenses,
+        totalProfit,
+        netCashBalance: totalInflow - totalExpenses
+      }
     });
   } catch (err) {
     res.status(400).json({ success: false, message: err.message });
