@@ -1517,66 +1517,69 @@ function ExpenseModal({ selectedDate, onClose, onSuccess }) {
 }
 
 function AnalyticsView({ analytics, period, onPeriodChange, loading }) {
-  const money = (value) => `৳ ${Number(value || 0).toLocaleString('bn-BD')}`;
-  const maxValue = (items, key) => Math.max(...(items || []).map((item) => Number(item[key] || 0)), 1);
-  const BarList = ({ items, labelKey, valueKey, color }) => (
-    <div className="space-y-3">
-      {(items || []).map((item) => (
-        <div key={item[labelKey]}>
-          <div className="flex justify-between text-xs font-bold mb-1">
-            <span>{item[labelKey]}</span><span>{valueKey === 'quantity' ? item[valueKey] : money(item[valueKey])}</span>
-          </div>
-          <div className="h-2 rounded-full bg-slate-100 overflow-hidden">
-            <div className={`h-full ${color} rounded-full`} style={{ width: `${Math.max(3, (Number(item[valueKey] || 0) / maxValue(items, valueKey)) * 100)}%` }} />
-          </div>
-        </div>
-      ))}
-      {!items?.length && <p className="text-sm text-slate-400 text-center py-4">এই সময়ে কোনো তথ্য নেই।</p>}
-    </div>
-  );
+  const number = (value) => Number(value || 0).toLocaleString('en-US');
+  const money = (value) => `৳ ${number(value)}`;
+  const card = 'w-full bg-white border border-slate-100 rounded-2xl p-4 shadow-sm hover:shadow-md transition-shadow';
+  const chartHeight = 'h-80';
+  const maxOf = (items, key) => Math.max(...(items || []).map((item) => Number(item[key] || 0)), 1);
+  const percent = (value, total) => total ? `${Math.round((value / total) * 100)}%` : '0%';
 
-  return (
-    <div className="space-y-4">
-      <div className="bg-white rounded-xl shadow-sm p-4">
-        <h2 className="text-lg font-extrabold text-slate-800">হিসাব অ্যানালিটিক্স ও রিপোর্ট</h2>
-        <p className="text-xs text-slate-500 mt-1">বিক্রি, লাভ, খরচ এবং ব্যস্ত সময়ের বিশ্লেষণ</p>
-        <div className="grid grid-cols-3 gap-2 mt-4">
-          {[['daily', 'আজকের'], ['weekly', 'চলতি সপ্তাহ'], ['monthly', 'চলতি মাস']].map(([value, label]) => (
-            <button key={value} onClick={() => onPeriodChange(value)} className={`py-2 rounded-lg text-xs font-bold border ${period === value ? 'bg-emerald-700 text-white border-emerald-700' : 'bg-slate-50 border-slate-200'}`}>{label}</button>
-          ))}
-        </div>
+  const ChartBars = ({ items = [], labelKey, valueKey, color = 'bg-emerald-500', moneyValue = true }) => {
+    const max = maxOf(items, valueKey);
+    return items.length ? (
+      <div className={`flex items-end gap-2 sm:gap-3 ${chartHeight} w-full pt-5 pb-8`}>
+        {items.map((item) => (
+          <div key={item[labelKey]} className="relative min-w-0 flex-1 h-full flex flex-col items-center justify-end group">
+            <span className="text-[10px] text-slate-500 opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap mb-1">
+              {moneyValue ? money(item[valueKey]) : number(item[valueKey])}
+            </span>
+            <div className={`w-full max-w-12 ${color} rounded-t-lg transition-all duration-300 group-hover:opacity-80`} style={{ height: `${Math.max(3, (Number(item[valueKey] || 0) / max) * 100)}%` }} title={`${item[labelKey]}: ${moneyValue ? money(item[valueKey]) : number(item[valueKey])}`} />
+            <span className="absolute mt-72 text-[10px] text-slate-500 text-center leading-tight max-w-16">{item[labelKey]}</span>
+          </div>
+        ))}
       </div>
-      {loading && !analytics ? <div className="bg-white rounded-xl p-8 text-center text-slate-500">অ্যানালিটিক্স লোড হচ্ছে...</div> : analytics && (
-        <>
-          <div className="grid grid-cols-2 gap-3">
-            {[
-              ['মোট বিক্রি', analytics.summary.totalRevenue, 'text-emerald-700'],
-              ['মোট লাভ', analytics.summary.grossProfit, 'text-blue-700'],
-              ['মোট খরচ', analytics.summary.totalExpenses, 'text-rose-700'],
-              ['নিট লাভ', analytics.summary.netProfit, analytics.summary.netProfit >= 0 ? 'text-emerald-700' : 'text-rose-700']
-            ].map(([label, value, color]) => <div key={label} className="bg-white rounded-xl shadow-sm p-4 border-l-4 border-slate-200"><p className="text-xs font-bold text-slate-500">{label}</p><p className={`text-xl font-extrabold mt-1 ${color}`}>{money(value)}</p></div>)}
-          </div>
-          <div className="grid lg:grid-cols-2 gap-4">
-            <div className="bg-white rounded-xl shadow-sm p-4"><h3 className="font-extrabold mb-4">সময় অনুযায়ী বিক্রি</h3><BarList items={analytics.byTimeSlot} labelKey="slot" valueKey="revenue" color="bg-amber-500" /></div>
-            <div className="bg-white rounded-xl shadow-sm p-4"><h3 className="font-extrabold mb-4">সপ্তাহের ব্যস্ত দিন</h3><BarList items={analytics.byDay} labelKey="day" valueKey="revenue" color="bg-indigo-500" /></div>
-            <div className="bg-white rounded-xl shadow-sm p-4"><h3 className="font-extrabold mb-4">সবচেয়ে বেশি বিক্রিত আইটেম</h3><BarList items={analytics.topByQuantity} labelKey="name" valueKey="quantity" color="bg-emerald-500" /></div>
-            <div className="bg-white rounded-xl shadow-sm p-4"><h3 className="font-extrabold mb-4">সবচেয়ে লাভজনক আইটেম</h3><BarList items={analytics.topByProfit} labelKey="name" valueKey="profit" color="bg-blue-500" /></div>
-          </div>
-          <div className="bg-white rounded-xl shadow-sm p-4">
-            <h3 className="font-extrabold mb-4">বিক্রি বনাম লাভ বনাম খরচ</h3>
-            <div className="flex items-end gap-2 h-44 overflow-x-auto">
-              {analytics.trend.map((item) => {
-                const scale = Math.max(...analytics.trend.flatMap((row) => [row.revenue, row.profit, row.expenses]), 1);
-                return <div key={item.date} className="min-w-12 h-full flex flex-col justify-end items-center gap-1"><div className="w-full bg-emerald-400 rounded-t" style={{ height: `${Math.max(2, item.revenue / scale * 100)}%` }} title={`বিক্রি ${money(item.revenue)}`} /><div className="w-full bg-blue-400 rounded-t" style={{ height: `${Math.max(2, item.profit / scale * 100)}%` }} title={`লাভ ${money(item.profit)}`} /><div className="w-full bg-rose-400 rounded-t" style={{ height: `${Math.max(2, item.expenses / scale * 100)}%` }} title={`খরচ ${money(item.expenses)}`} /><span className="text-[9px] text-slate-500 rotate-45 mt-2">{item.date.slice(5)}</span></div>;
-              })}
-            </div>
-            <div className="flex gap-4 text-xs font-bold mt-5"><span className="text-emerald-600">■ বিক্রি</span><span className="text-blue-600">■ লাভ</span><span className="text-rose-600">■ খরচ</span></div>
-          </div>
-          <div className="bg-white rounded-xl shadow-sm p-4"><h3 className="font-extrabold mb-4">আয়ের বণ্টন</h3><BarList items={analytics.revenueDistribution} labelKey="name" valueKey="value" color="bg-violet-500" /></div>
-        </>
-      )}
+    ) : <p className="h-80 flex items-center justify-center text-sm text-slate-400">এই সময়ে কোনো তথ্য নেই।</p>;
+  };
+
+  const RankedList = ({ items = [], valueKey, color }) => {
+    const max = maxOf(items, valueKey);
+    return items.length ? <div className="space-y-4">{items.slice(0, 5).map((item, index) => (
+      <div key={`${item.name}-${index}`}>
+        <div className="flex justify-between gap-3 text-xs font-bold mb-1"><span className="truncate">{index + 1}. {item.name}</span><span className="shrink-0">{valueKey === 'quantity' ? `${number(item[valueKey])} pcs` : money(item[valueKey])}</span></div>
+        <div className="h-2 rounded-full bg-slate-100 overflow-hidden"><div className={`h-full rounded-full ${color}`} style={{ width: `${Math.max(4, (Number(item[valueKey] || 0) / max) * 100)}%` }} /></div>
+      </div>
+    ))}</div> : <p className="text-sm text-slate-400 text-center py-8">এই সময়ে কোনো তথ্য নেই।</p>;
+  };
+
+  const Donut = ({ items = [] }) => {
+    const total = items.reduce((sum, item) => sum + Number(item.value || 0), 0);
+    let offset = 0;
+    const colors = ['#10b981', '#3b82f6', '#f59e0b', '#f43f5e', '#8b5cf6'];
+    const segments = items.map((item, index) => {
+      const start = offset; offset += Number(item.value || 0);
+      return { ...item, start, color: colors[index % colors.length] };
+    });
+    const gradient = total > 0 ? `conic-gradient(${segments.map((item) => `${item.color} ${(item.start / total) * 100}% ${(item.start + item.value) / total * 100}%`).join(', ')})` : '#e2e8f0';
+    return <div className="flex flex-col sm:flex-row items-center justify-center gap-6 h-80">
+      <div className="relative w-44 h-44 shrink-0 rounded-full" style={{ background: gradient }}>
+        <div className="absolute inset-8 rounded-full bg-white flex flex-col items-center justify-center"><span className="text-[10px] text-slate-500">মোট আয়</span><b className="text-sm text-slate-800">{money(total)}</b></div>
+      </div>
+      <div className="space-y-2 text-xs w-full sm:w-auto">{segments.map((item) => <div key={item.name} className="flex items-center gap-2"><span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: item.color }} /><span className="truncate">{item.name}</span><b className="ml-auto">{percent(item.value, total)}</b></div>)}</div>
+    </div>;
+  };
+
+  return <div className="space-y-4">
+    <div className={card}>
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3"><div><h2 className="text-lg font-extrabold text-slate-800">হিসাব অ্যানালিটিক্স ও রিপোর্ট</h2><p className="text-xs text-slate-500 mt-1">বিক্রি, লাভ, খরচ এবং ব্যস্ত সময়ের বিশ্লেষণ</p></div><div className="grid grid-cols-3 gap-2 w-full sm:w-auto">{[['daily', 'আজকের'], ['weekly', 'চলতি সপ্তাহ'], ['monthly', 'চলতি মাস']].map(([value, label]) => <button key={value} onClick={() => onPeriodChange(value)} className={`py-2 px-3 rounded-lg text-xs font-bold border transition-colors ${period === value ? 'bg-emerald-700 text-white border-emerald-700' : 'bg-slate-50 border-slate-200 text-slate-700'}`}>{label}</button>)}</div></div>
     </div>
-  );
+    {loading && !analytics ? <div className={`${card} h-80 flex items-center justify-center text-slate-500`}>অ্যানালিটিক্স লোড হচ্ছে...</div> : analytics && <>
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">{[['মোট বিক্রি', analytics.summary.totalRevenue, 'text-emerald-700'], ['মোট লাভ', analytics.summary.grossProfit, 'text-blue-700'], ['মোট খরচ', analytics.summary.totalExpenses, 'text-rose-700'], ['নিট লাভ', analytics.summary.netProfit, analytics.summary.netProfit >= 0 ? 'text-emerald-700' : 'text-rose-700']].map(([label, value, color]) => <div key={label} className={card}><p className="text-xs font-bold text-slate-500">{label}</p><p className={`text-xl font-extrabold mt-1 ${color}`}>{money(value)}</p></div>)}</div>
+      <div className={card}><div className="flex items-center justify-between mb-3"><h3 className="font-extrabold">বিক্রি বনাম লাভ বনাম খরচ</h3><span className="text-[10px] text-slate-400">English numerals</span></div><div className="flex gap-4 text-xs font-bold mb-2"><span className="text-emerald-600">● বিক্রি</span><span className="text-blue-600">● লাভ</span><span className="text-rose-600">● খরচ</span></div><div className={`relative ${chartHeight} w-full flex items-end gap-1 sm:gap-2 border-b border-slate-200 bg-[linear-gradient(to_bottom,transparent_24%,#f1f5f9_25%,transparent_26%,transparent_49%,#f1f5f9_50%,transparent_51%,transparent_74%,#f1f5f9_75%,transparent_76%)]`}>{analytics.trend.length ? analytics.trend.map((item) => { const scale = Math.max(...analytics.trend.flatMap((row) => [row.revenue, row.profit, row.expenses]), 1); return <div key={item.date} className="flex-1 h-full flex items-end justify-center gap-px group min-w-0"><div className="w-1/3 max-w-5 bg-emerald-500 rounded-t" style={{ height: `${Math.max(2, item.revenue / scale * 100)}%` }} title={`Sales ${money(item.revenue)}`} /><div className="w-1/3 max-w-5 bg-blue-500 rounded-t" style={{ height: `${Math.max(2, item.profit / scale * 100)}%` }} title={`Profit ${money(item.profit)}`} /><div className="w-1/3 max-w-5 bg-rose-500 rounded-t" style={{ height: `${Math.max(2, item.expenses / scale * 100)}%` }} title={`Expense ${money(item.expenses)}`} /><span className="absolute bottom-[-22px] text-[9px] text-slate-500">{item.date.slice(5)}</span></div>; }) : <p className="w-full text-center self-center text-sm text-slate-400">এই সময়ে কোনো তথ্য নেই।</p>}</div></div>
+      <div className="grid lg:grid-cols-2 gap-4"><div className={card}><h3 className="font-extrabold mb-1">আয়ের বণ্টন</h3><p className="text-xs text-slate-500">বিভাগ অনুযায়ী মোট বিক্রির অংশ</p><Donut items={analytics.revenueDistribution} /></div><div className={card}><h3 className="font-extrabold mb-1">বার ভিত্তিক বিক্রি</h3><p className="text-xs text-slate-500">কোন দিনে বিক্রি বেশি হয়েছে</p><ChartBars items={analytics.byDay} labelKey="day" valueKey="revenue" color="bg-indigo-500" /></div></div>
+      <div className={card}><h3 className="font-extrabold mb-1">সময় ও দিনের ব্যস্ততা</h3><p className="text-xs text-slate-500">সময় স্লট অনুযায়ী বিক্রি</p><ChartBars items={analytics.byTimeSlot} labelKey="slot" valueKey="revenue" color="bg-amber-500" /></div>
+      <div className="grid lg:grid-cols-2 gap-4"><div className={card}><h3 className="font-extrabold mb-4">শীর্ষ ৫টি বিক্রিত পণ্য ও সার্ভিস</h3><RankedList items={analytics.topByQuantity} valueKey="quantity" color="bg-emerald-500" /></div><div className={card}><h3 className="font-extrabold mb-4">শীর্ষ ৫টি লাভজনক পণ্য ও সার্ভিস</h3><RankedList items={analytics.topByProfit} valueKey="profit" color="bg-blue-500" /></div></div>
+    </>}
+  </div>;
 }
 
 function ExpenseReportView({

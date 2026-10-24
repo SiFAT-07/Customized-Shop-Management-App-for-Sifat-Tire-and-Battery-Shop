@@ -597,7 +597,9 @@ exports.getAnalyticsSummary = async (req, res) => {
       const date = new Date(sale.date), hour = date.getHours();
       const slot = hour >= 9 && hour < 12 ? slots[0] : hour >= 12 && hour < 16 ? slots[1] : hour >= 16 && hour < 21 ? slots[2] : slots[3];
       const name = sale.entryType === 'SERVICE' ? (sale.serviceType === 'BATTERY_CHARGE' ? 'ব্যাটারি চার্জ' : sale.serviceType === 'VULCANIZING' ? 'ভলকানাইজিং' : 'অন্যান্য সার্ভিস') : (sale.product?.name || sale.customProductName || 'অজানা পণ্য');
-      const category = sale.entryType === 'SERVICE' ? 'সার্ভিস চার্জ' : sale.product?.category === 'BATTERY' ? 'ব্যাটারি বিক্রি' : sale.product?.category === 'TIRE' ? 'টায়ার বিক্রি' : 'অন্যান্য পণ্য';
+      const category = sale.entryType === 'SERVICE'
+        ? (sale.serviceType === 'BATTERY_CHARGE' ? 'ব্যাটারি চার্জ সার্ভিস' : sale.serviceType === 'VULCANIZING' ? 'ভলকানাইজিং সার্ভিস' : 'অন্যান্য সার্ভিস')
+        : sale.product?.category === 'BATTERY' ? 'ব্যাটারি বিক্রি' : sale.product?.category === 'TIRE' ? 'টায়ার বিক্রি' : 'অন্যান্য পণ্য';
       const day = days[date.getDay()], dateKey = getLocalDateKey(date);
       if (!items[name]) items[name] = { name, quantity: 0, revenue: 0, profit: 0 };
       items[name].quantity += sale.quantity; items[name].revenue += sale.totalSellingPrice; items[name].profit += sale.profit;
