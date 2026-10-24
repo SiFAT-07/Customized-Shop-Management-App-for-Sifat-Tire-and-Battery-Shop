@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { 
   PlusCircle, Wrench, PackagePlus, Wallet, Trash2, Edit3, 
-  Calendar, TrendingUp, AlertTriangle, Layers, BarChart3, Home, Check, X 
+  Calendar, TrendingUp, AlertTriangle, Layers, BarChart3, Home, Check, X, FileText, Download
 } from 'lucide-react';
 
 // Set VITE_API_BASE in frontend/.env.local for local or Vercel deployment.
@@ -57,8 +57,39 @@ const EXPENSE_LABELS = {
   OTHER_MONTHLY: 'অন্যান্য মাসিক খরচ'
 };
 
+const getDateInputValue = (date) => {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
+
+const formatDateTime = (value) => new Date(value).toLocaleString('bn-BD', {
+  year: 'numeric',
+  month: 'short',
+  day: 'numeric',
+  hour: 'numeric',
+  minute: '2-digit'
+});
+
+const getPresetRange = (preset) => {
+  const today = new Date();
+  const end = getDateInputValue(today);
+  const startDate = new Date(today);
+  if (preset === 'TODAY') {
+    return { startDate: end, endDate: end };
+  }
+  if (preset === 'THIS_WEEK') {
+    const day = startDate.getDay();
+    startDate.setDate(startDate.getDate() - (day === 0 ? 6 : day - 1));
+  } else {
+    startDate.setDate(1);
+  }
+  return { startDate: getDateInputValue(startDate), endDate: end };
+};
+
 export default function App() {
-  const [activeTab, setActiveTab] = useState('HOME'); // HOME | STOCK | MONTHLY
+  const [activeTab, setActiveTab] = useState('HOME'); // HOME | STOCK | MONTHLY | EXPENSES
   const [selectedDate, setSelectedDate] = useState(getLocalDateInputValue());
   const [loading, setLoading] = useState(false);
 
@@ -82,6 +113,13 @@ export default function App() {
   const [reportMonth, setReportMonth] = useState(new Date().getMonth() + 1);
   const [reportYear, setReportYear] = useState(new Date().getFullYear());
   const [monthlyData, setMonthlyData] = useState(null);
+  const initialExpenseRange = getPresetRange('THIS_MONTH');
+  const [expensePreset, setExpensePreset] = useState('THIS_MONTH');
+  const [expenseStartDate, setExpenseStartDate] = useState(initialExpenseRange.startDate);
+  const [expenseEndDate, setExpenseEndDate] = useState(initialExpenseRange.endDate);
+  const [expenseCategory, setExpenseCategory] = useState('ALL');
+  const [expenseReport, setExpenseReport] = useState({ data: [], summary: { totalCount: 0, totalAmount: 0 } });
+  const [expenseViewerOpen, setExpenseViewerOpen] = useState(false);
 
   // Modal States (NONE | SALE | SERVICE | STOCK_IN | EXPENSE | NEW_PRODUCT)
   const [activeModal, setActiveModal] = useState('NONE');
@@ -124,6 +162,26 @@ export default function App() {
     setLoading(false);
   };
 
+  const fetchExpenseReport = async () => {
+    setLoading(true);
+    try {
+      const params = new URLSearchParams({
+        startDate: expenseStartDate,
+        endDate: expenseEndDate,
+        category: expenseCategory
+      });
+      const res = await fetch(`${API_BASE}/expenses?${params.toString()}`);
+      const json = await res.json();
+      if (!res.ok || !json.success) throw new Error(json.message || 'খরচের রিপোর্ট পাওয়া যায়নি।');
+      setExpenseReport(json);
+    } catch (err) {
+      console.error('Expense report error:', err);
+      window.alert(err.message || 'খরচের রিপোর্ট পাওয়া যায়নি।');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   useEffect(() => {
     fetchProducts();
     fetchDailySummary(selectedDate);
@@ -134,6 +192,19 @@ export default function App() {
       fetchMonthlyReport();
     }
   }, [activeTab, reportMonth, reportYear]);
+
+  useEffect(() => {
+    if (activeTab === 'EXPENSES') fetchExpenseReport();
+  }, [activeTab, expenseStartDate, expenseEndDate, expenseCategory]);
+
+  const handleExpensePresetChange = (preset) => {
+    setExpensePreset(preset);
+    if (preset !== 'CUSTOM') {
+      const range = getPresetRange(preset);
+      setExpenseStartDate(range.startDate);
+      setExpenseEndDate(range.endDate);
+    }
+  };
 
   // --- Delete Handlers (ভুল সংশোধন) ---
   const handleDeleteSaleOrService = async (id) => {
@@ -529,6 +600,23 @@ export default function App() {
             )}
           </div>
         )}
+
+        {activeTab === 'EXPENSES' && (
+          <ExpenseReportView
+            expenses={expenseReport.data}
+            summary={expenseReport.summary}
+            preset={expensePreset}
+            startDate={expenseStartDate}
+            endDate={expenseEndDate}
+            category={expenseCategory}
+            loading={loading}
+            onPresetChange={handleExpensePresetChange}
+            onStartDateChange={(value) => { setExpensePreset('CUSTOM'); setExpenseStartDate(value); }}
+            onEndDateChange={(value) => { setExpensePreset('CUSTOM'); setExpenseEndDate(value); }}
+            onCategoryChange={setExpenseCategory}
+            onPreview={() => setExpenseViewerOpen(true)}
+          />
+        )}
       </main>
 
       {/* ==========================================
@@ -621,9 +709,19 @@ export default function App() {
         />
       )}
 
+      {expenseViewerOpen && (
+        <ExpensePdfViewer
+          expenses={expenseReport.data}
+          summary={expenseReport.summary}
+          startDate={expenseStartDate}
+          endDate={expenseEndDate}
+          onClose={() => setExpenseViewerOpen(false)}
+        />
+      )}
+
       {/* Bottom Fixed Navigation Bar (আব্বুর মোবাইলের জন্য) */}
       <nav className="fixed bottom-0 left-0 right-0 bg-white border-t border-slate-300 shadow-lg z-20">
-        <div className="max-w-xl mx-auto grid grid-cols-3">
+        <div className="max-w-xl mx-auto grid grid-cols-4">
           <button
             onClick={() => setActiveTab('HOME')}
             className={`flex flex-col items-center py-3 font-bold text-xs ${
@@ -652,6 +750,16 @@ export default function App() {
           >
             <BarChart3 className="w-6 h-6 mb-1" />
             <span>মাসিক লাভ-লস</span>
+          </button>
+
+          <button
+            onClick={() => setActiveTab('EXPENSES')}
+            className={`flex flex-col items-center py-3 font-bold text-xs ${
+              activeTab === 'EXPENSES' ? 'text-emerald-700 bg-emerald-50 border-t-4 border-emerald-700' : 'text-slate-500'
+            }`}
+          >
+            <FileText className="w-6 h-6 mb-1" />
+            <span>খরচ রিপোর্ট</span>
           </button>
         </div>
       </nav>
@@ -1263,6 +1371,225 @@ function ExpenseModal({ selectedDate, onClose, onSuccess }) {
             খরচ সেভ করুন
           </button>
         </form>
+      </div>
+    </div>
+  );
+}
+
+function ExpenseReportView({
+  expenses,
+  summary,
+  preset,
+  startDate,
+  endDate,
+  category,
+  loading,
+  onPresetChange,
+  onStartDateChange,
+  onEndDateChange,
+  onCategoryChange,
+  onPreview
+}) {
+  return (
+    <div className="space-y-4">
+      <div className="bg-white rounded-xl shadow-sm p-4 space-y-3">
+        <div className="flex justify-between items-center gap-2">
+          <div>
+            <h2 className="text-lg font-extrabold text-slate-800">খরচের রিপোর্ট</h2>
+            <p className="text-xs text-slate-500">তারিখ ও খাত অনুযায়ী দোকানের সব খরচ দেখুন</p>
+          </div>
+          <button
+            onClick={onPreview}
+            disabled={!expenses.length}
+            className="px-3 py-2 rounded-lg bg-emerald-700 text-white text-xs font-bold disabled:opacity-40 flex items-center gap-1"
+          >
+            <Download className="w-4 h-4" /> PDF Preview
+          </button>
+        </div>
+
+        <div className="grid grid-cols-2 gap-2">
+          {[
+            ['TODAY', 'আজ'],
+            ['THIS_WEEK', 'এই সপ্তাহ'],
+            ['THIS_MONTH', 'এই মাস'],
+            ['CUSTOM', 'নিজের তারিখ']
+          ].map(([value, label]) => (
+            <button
+              key={value}
+              onClick={() => onPresetChange(value)}
+              className={`py-2 rounded-lg text-xs font-bold border ${
+                preset === value ? 'bg-emerald-700 text-white border-emerald-700' : 'bg-slate-50 text-slate-700 border-slate-200'
+              }`}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+
+        <div className="grid grid-cols-2 gap-2">
+          <label className="text-xs font-bold text-slate-600">
+            শুরু
+            <input type="date" value={startDate} onChange={(e) => onStartDateChange(e.target.value)} className="w-full mt-1 border rounded-lg p-2 text-sm" />
+          </label>
+          <label className="text-xs font-bold text-slate-600">
+            শেষ
+            <input type="date" value={endDate} onChange={(e) => onEndDateChange(e.target.value)} className="w-full mt-1 border rounded-lg p-2 text-sm" />
+          </label>
+        </div>
+
+        <select value={category} onChange={(e) => onCategoryChange(e.target.value)} className="w-full border rounded-lg p-2.5 text-sm font-bold bg-white">
+          <option value="ALL">সব খরচের খাত</option>
+          {Object.entries(EXPENSE_LABELS).map(([key, label]) => <option key={key} value={key}>{label}</option>)}
+        </select>
+      </div>
+
+      <div className="grid grid-cols-2 gap-3">
+        <div className="bg-white rounded-xl shadow-sm p-4 border-l-4 border-blue-600">
+          <p className="text-xs text-slate-500 font-bold">মোট খরচের সংখ্যা</p>
+          <p className="text-2xl font-extrabold text-blue-700 mt-1">{summary.totalCount}</p>
+        </div>
+        <div className="bg-white rounded-xl shadow-sm p-4 border-l-4 border-rose-600">
+          <p className="text-xs text-slate-500 font-bold">মোট খরচ</p>
+          <p className="text-2xl font-extrabold text-rose-700 mt-1">৳ {summary.totalAmount.toLocaleString()}</p>
+        </div>
+      </div>
+
+      <div className="bg-white rounded-xl shadow-sm overflow-hidden">
+        {loading ? (
+          <p className="p-6 text-center text-slate-500 text-sm">রিপোর্ট লোড হচ্ছে...</p>
+        ) : expenses.length === 0 ? (
+          <p className="p-6 text-center text-slate-500 text-sm">এই ফিল্টারে কোনো খরচ পাওয়া যায়নি।</p>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-xs">
+              <thead className="bg-slate-800 text-white">
+                <tr>
+                  <th className="p-3 whitespace-nowrap">তারিখ ও সময়</th>
+                  <th className="p-3 whitespace-nowrap">খরচের খাত</th>
+                  <th className="p-3 min-w-40">বিবরণ / নোট</th>
+                  <th className="p-3 text-right whitespace-nowrap">পরিমাণ (৳)</th>
+                </tr>
+              </thead>
+              <tbody>
+                {expenses.map((expense) => (
+                  <tr key={expense._id} className="border-b last:border-0">
+                    <td className="p-3 whitespace-nowrap">{formatDateTime(expense.date)}</td>
+                    <td className="p-3 font-bold">{EXPENSE_LABELS[expense.category] || expense.category}</td>
+                    <td className="p-3 text-slate-600">{expense.note || '—'}</td>
+                    <td className="p-3 text-right font-extrabold text-rose-700">{expense.amount.toLocaleString()}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+const escapeHtml = (value) => String(value)
+  .replaceAll('&', '&amp;')
+  .replaceAll('<', '&lt;')
+  .replaceAll('>', '&gt;')
+  .replaceAll('"', '&quot;')
+  .replaceAll("'", '&#039;');
+
+function ExpensePdfViewer({ expenses, summary, startDate, endDate, onClose }) {
+  const printStatement = () => {
+    const printWindow = window.open('', '_blank', 'width=900,height=700');
+    if (!printWindow) {
+      window.alert('PDF preview খোলার জন্য browser popup allow করুন।');
+      return;
+    }
+    const rows = expenses.map((expense) => `
+      <tr>
+        <td>${escapeHtml(formatDateTime(expense.date))}</td>
+        <td>${escapeHtml(EXPENSE_LABELS[expense.category] || expense.category)}</td>
+        <td>${escapeHtml(expense.note || '—')}</td>
+        <td class="amount">${Number(expense.amount).toLocaleString('bn-BD')}</td>
+      </tr>
+    `).join('');
+    printWindow.document.write(`
+      <!doctype html>
+      <html lang="bn">
+        <head>
+          <meta charset="UTF-8">
+          <title>Expense Statement</title>
+          <style>
+            @page { size: A4; margin: 14mm; }
+            body { font-family: "Noto Sans Bengali", "SolaimanLipi", Arial, sans-serif; color: #0f172a; }
+            h1 { margin: 0; color: #065f46; font-size: 22px; }
+            h2 { margin: 4px 0; font-size: 14px; font-weight: 500; }
+            .meta { color: #475569; font-size: 12px; margin: 12px 0 18px; }
+            table { width: 100%; border-collapse: collapse; font-size: 11px; }
+            th, td { border: 1px solid #cbd5e1; padding: 8px; text-align: left; }
+            th { background: #064e3b; color: white; }
+            .amount { text-align: right; font-weight: bold; }
+            .total { margin-top: 16px; padding: 12px; border: 2px solid #047857; background: #ecfdf5; text-align: right; font-size: 16px; font-weight: bold; }
+            .printed { margin-top: 14px; color: #64748b; font-size: 10px; }
+          </style>
+        </head>
+        <body>
+          <h1>সিফাত টায়ার অ্যান্ড ব্যাটারি শপ</h1>
+          <h2>দোকানের খরচের বিবরণী</h2>
+          <div class="meta">সময়কাল: ${escapeHtml(startDate)} থেকে ${escapeHtml(endDate)}</div>
+          <table>
+            <thead><tr><th>তারিখ ও সময়</th><th>খরচের খাত</th><th>বিবরণ / নোট</th><th>পরিমাণ (৳)</th></tr></thead>
+            <tbody>${rows}</tbody>
+          </table>
+          <div class="total">মোট ${summary.totalCount}টি খরচ — ৳ ${Number(summary.totalAmount).toLocaleString('bn-BD')}</div>
+          <div class="printed">প্রিন্টের সময়: ${escapeHtml(formatDateTime(new Date()))}</div>
+        </body>
+      </html>
+    `);
+    printWindow.document.close();
+    printWindow.focus();
+    printWindow.onload = () => printWindow.print();
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/70 z-50 flex items-center justify-center p-3">
+      <div className="bg-white rounded-xl w-full max-w-3xl max-h-[94vh] overflow-hidden flex flex-col">
+        <div className="p-4 border-b flex justify-between items-center">
+          <div>
+            <h3 className="font-extrabold text-emerald-800">PDF Statement Preview</h3>
+            <p className="text-xs text-slate-500">Download PDF চাপলে browser-এর print dialog খুলবে</p>
+          </div>
+          <button onClick={onClose} className="p-2 bg-slate-100 rounded-full"><X className="w-5 h-5" /></button>
+        </div>
+        <div className="p-4 overflow-y-auto">
+          <div className="border-2 border-slate-200 p-4 bg-white">
+            <h1 className="text-xl font-extrabold text-emerald-800">সিফাত টায়ার অ্যান্ড ব্যাটারি শপ</h1>
+            <p className="text-sm font-bold">দোকানের খরচের বিবরণী</p>
+            <p className="text-xs text-slate-500 mt-1">সময়কাল: {startDate} থেকে {endDate}</p>
+            <table className="w-full mt-4 text-xs border-collapse">
+              <thead className="bg-emerald-800 text-white">
+                <tr><th className="p-2 border text-left">তারিখ ও সময়</th><th className="p-2 border text-left">খরচের খাত</th><th className="p-2 border text-left">বিবরণ / নোট</th><th className="p-2 border text-right">পরিমাণ (৳)</th></tr>
+              </thead>
+              <tbody>
+                {expenses.map((expense) => (
+                  <tr key={expense._id}>
+                    <td className="p-2 border">{formatDateTime(expense.date)}</td>
+                    <td className="p-2 border">{EXPENSE_LABELS[expense.category] || expense.category}</td>
+                    <td className="p-2 border">{expense.note || '—'}</td>
+                    <td className="p-2 border text-right font-bold">{expense.amount.toLocaleString()}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            <div className="mt-4 p-3 bg-emerald-50 border-2 border-emerald-600 text-right font-extrabold">
+              মোট {summary.totalCount}টি খরচ — ৳ {summary.totalAmount.toLocaleString()}
+            </div>
+            <p className="text-[10px] text-slate-500 mt-3">প্রিন্টের সময়: {formatDateTime(new Date())}</p>
+          </div>
+        </div>
+        <div className="p-4 border-t flex justify-end gap-2">
+          <button onClick={onClose} className="px-4 py-2 rounded-lg bg-slate-100 font-bold">বন্ধ করুন</button>
+          <button onClick={printStatement} className="px-4 py-2 rounded-lg bg-emerald-700 text-white font-bold flex items-center gap-1">
+            <Download className="w-4 h-4" /> Download PDF
+          </button>
+        </div>
       </div>
     </div>
   );

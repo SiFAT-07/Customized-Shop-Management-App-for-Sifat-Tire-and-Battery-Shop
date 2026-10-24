@@ -18,6 +18,7 @@ router.delete('/sales-services/:id', shopController.deleteSaleOrService);
 router.post('/expenses', shopController.addExpense);
 router.put('/expenses/:id', shopController.updateExpense);
 router.delete('/expenses/:id', shopController.deleteExpense);
+router.get('/expenses', shopController.getExpenses);
 
 // Reports (Daily & Monthly)
 router.get('/reports/daily', shopController.getDailySummary);

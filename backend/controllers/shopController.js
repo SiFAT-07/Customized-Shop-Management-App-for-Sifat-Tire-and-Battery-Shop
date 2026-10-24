@@ -385,6 +385,34 @@ exports.deleteExpense = async (req, res) => {
   }
 };
 
+// Expense report with local date-range and category filters.
+exports.getExpenses = async (req, res) => {
+  try {
+    const { startDate, endDate, category } = req.query;
+    const filter = {};
+    if (startDate || endDate) {
+      const range = {};
+      if (startDate) range.$gte = getDayBounds(startDate).start;
+      if (endDate) range.$lte = getDayBounds(endDate).end;
+      if (range.$gte && range.$lte && range.$gte > range.$lte) {
+        return res.status(400).json({ success: false, message: 'শুরুর তারিখ শেষের তারিখের পরে হতে পারবে না।' });
+      }
+      filter.date = range;
+    }
+    if (category && category !== 'ALL') filter.category = category;
+
+    const expenses = await Expense.find(filter).sort({ date: -1, createdAt: -1 });
+    const totalAmount = expenses.reduce((sum, expense) => sum + expense.amount, 0);
+    res.json({
+      success: true,
+      data: expenses,
+      summary: { totalCount: expenses.length, totalAmount }
+    });
+  } catch (err) {
+    res.status(400).json({ success: false, message: err.message });
+  }
+};
+
 
 // ==========================================
 // ৪. REPORTS: প্রতিদিনের হিসাব ও মাস শেষের হিসাব
