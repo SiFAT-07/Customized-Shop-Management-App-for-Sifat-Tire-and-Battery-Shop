@@ -71,7 +71,7 @@ const validateSaleInput = (data) => {
   if (!Number.isInteger(quantity) || quantity < 1) throw new Error('পরিমাণ কমপক্ষে ১ হতে হবে।');
   if (!isFiniteNumber(sellingPrice) || sellingPrice < 0) throw new Error('বিক্রির দাম সঠিক নয়।');
   if (entryType === 'SERVICE') {
-    if (!['BATTERY_CHARGE', 'VULCANIZING', 'OTHER_SERVICE'].includes(data.serviceType)) {
+    if (!['BATTERY_CHARGE', 'VULCANIZING', 'AIR', 'OTHER_SERVICE'].includes(data.serviceType)) {
       throw new Error('সার্ভিসের ধরন সঠিক নয়।');
     }
   } else {
@@ -143,6 +143,18 @@ exports.updateProduct = async (req, res) => {
     );
     if (!product) return res.status(404).json({ success: false, message: 'পণ্যটি পাওয়া যায়নি!' });
     res.json({ success: true, data: product });
+  } catch (err) {
+    res.status(400).json({ success: false, message: err.message });
+  }
+};
+
+// Product master delete. Historical sales may retain a null populated product
+// reference, so deleting the master record does not rewrite financial history.
+exports.deleteProduct = async (req, res) => {
+  try {
+    const product = await Product.findByIdAndDelete(req.params.id);
+    if (!product) return res.status(404).json({ success: false, message: 'পণ্যটি পাওয়া যায়নি!' });
+    res.json({ success: true, message: 'Product deleted' });
   } catch (err) {
     res.status(400).json({ success: false, message: err.message });
   }
@@ -454,7 +466,7 @@ exports.getFinancialStatement = async (req, res) => {
           type: isService ? 'SERVICE' : 'SALE',
           typeLabel: isService ? 'সার্ভিস চার্জ' : 'মালের বিক্রি',
           description: isService
-            ? (sale.serviceType === 'BATTERY_CHARGE' ? 'ব্যাটারি চার্জ' : sale.serviceType === 'VULCANIZING' ? 'ভলকানাইজিং' : 'অন্যান্য সার্ভিস')
+            ? (sale.serviceType === 'BATTERY_CHARGE' ? 'ব্যাটারি চার্জ' : sale.serviceType === 'VULCANIZING' ? 'ভলকানাইজিং' : sale.serviceType === 'AIR' ? 'হাওয়া' : 'অন্যান্য সার্ভিস')
             : `${sale.product?.name || sale.customProductName || 'পণ্য বিক্রি'} × ${sale.quantity} পিস`,
           note: sale.note || '',
           inflow: sale.totalSellingPrice,
@@ -596,9 +608,9 @@ exports.getAnalyticsSummary = async (req, res) => {
     sales.forEach((sale) => {
       const date = new Date(sale.date), hour = date.getHours();
       const slot = hour >= 9 && hour < 12 ? slots[0] : hour >= 12 && hour < 16 ? slots[1] : hour >= 16 && hour < 21 ? slots[2] : slots[3];
-      const name = sale.entryType === 'SERVICE' ? (sale.serviceType === 'BATTERY_CHARGE' ? 'ব্যাটারি চার্জ' : sale.serviceType === 'VULCANIZING' ? 'ভলকানাইজিং' : 'অন্যান্য সার্ভিস') : (sale.product?.name || sale.customProductName || 'অজানা পণ্য');
+      const name = sale.entryType === 'SERVICE' ? (sale.serviceType === 'BATTERY_CHARGE' ? 'ব্যাটারি চার্জ' : sale.serviceType === 'VULCANIZING' ? 'ভলকানাইজিং' : sale.serviceType === 'AIR' ? 'হাওয়া' : 'অন্যান্য সার্ভিস') : (sale.product?.name || sale.customProductName || 'অজানা পণ্য');
       const category = sale.entryType === 'SERVICE'
-        ? (sale.serviceType === 'BATTERY_CHARGE' ? 'ব্যাটারি চার্জ সার্ভিস' : sale.serviceType === 'VULCANIZING' ? 'ভলকানাইজিং সার্ভিস' : 'অন্যান্য সার্ভিস')
+        ? (sale.serviceType === 'BATTERY_CHARGE' ? 'ব্যাটারি চার্জ সার্ভিস' : sale.serviceType === 'VULCANIZING' ? 'ভলকানাইজিং সার্ভিস' : sale.serviceType === 'AIR' ? 'হাওয়া সার্ভিস' : 'অন্যান্য সার্ভিস')
         : sale.product?.category === 'BATTERY' ? 'ব্যাটারি বিক্রি' : sale.product?.category === 'TIRE' ? 'টায়ার বিক্রি' : 'অন্যান্য পণ্য';
       const day = days[date.getDay()], dateKey = getLocalDateKey(date);
       if (!items[name]) items[name] = { name, quantity: 0, revenue: 0, profit: 0 };
@@ -643,6 +655,7 @@ exports.getMonthlyReport = async (req, res) => {
     let productProfit = 0;
     let batteryChargeIncome = 0;
     let vulcanizingIncome = 0;
+    let airIncome = 0;
 
     // প্রতিদিনের ব্রেকডাউন টেবিলের জন্য ম্যাপ
     const dailyMap = {};
@@ -661,7 +674,8 @@ exports.getMonthlyReport = async (req, res) => {
         productProfit += s.profit;
       } else {
         if (s.serviceType === 'BATTERY_CHARGE') batteryChargeIncome += s.totalSellingPrice;
-        else vulcanizingIncome += s.totalSellingPrice;
+        else if (s.serviceType === 'VULCANIZING') vulcanizingIncome += s.totalSellingPrice;
+        else if (s.serviceType === 'AIR') airIncome += s.totalSellingPrice;
       }
     });
 
@@ -703,8 +717,8 @@ exports.getMonthlyReport = async (req, res) => {
         sales.forEach((sale) => {
           const date = new Date(sale.date), hour = date.getHours();
           const slot = hour >= 9 && hour < 12 ? slots[0] : hour >= 12 && hour < 16 ? slots[1] : hour >= 16 && hour < 21 ? slots[2] : slots[3];
-          const itemName = sale.entryType === 'SERVICE' ? (sale.serviceType === 'BATTERY_CHARGE' ? 'ব্যাটারি চার্জ' : sale.serviceType === 'VULCANIZING' ? 'ভলকানাইজিং' : 'অন্যান্য সার্ভিস') : (sale.itemName || 'অজানা পণ্য');
-          const category = sale.entryType === 'SERVICE' ? 'সার্ভিস চার্জ' : sale.category === 'BATTERY' ? 'ব্যাটারি বিক্রি' : sale.category === 'TIRE' ? 'টায়ার বিক্রি' : 'অন্যান্য পণ্য';
+          const itemName = sale.entryType === 'SERVICE' ? (sale.serviceType === 'BATTERY_CHARGE' ? 'ব্যাটারি চার্জ' : sale.serviceType === 'VULCANIZING' ? 'ভলকানাইজিং' : sale.serviceType === 'AIR' ? 'হাওয়া' : 'অন্যান্য সার্ভিস') : (sale.itemName || 'অজানা পণ্য');
+          const category = sale.entryType === 'SERVICE' ? (sale.serviceType === 'AIR' ? 'হাওয়া সার্ভিস' : 'সার্ভিস চার্জ') : sale.category === 'BATTERY' ? 'ব্যাটারি বিক্রি' : sale.category === 'TIRE' ? 'টায়ার বিক্রি' : 'অন্যান্য পণ্য';
           const day = days[date.getDay()], dateKey = getLocalDateKey(date);
           if (!items[itemName]) items[itemName] = { name: itemName, quantity: 0, revenue: 0, profit: 0 };
           items[itemName].quantity += sale.quantity; items[itemName].revenue += sale.totalSellingPrice; items[itemName].profit += sale.profit;
@@ -750,7 +764,7 @@ exports.getMonthlyReport = async (req, res) => {
       .map(d => ({ ...d, netProfit: d.grossProfit - d.dailyExpense }))
       .sort((a, b) => new Date(b.date) - new Date(a.date));
 
-    const totalServiceIncome = batteryChargeIncome + vulcanizingIncome;
+    const totalServiceIncome = batteryChargeIncome + vulcanizingIncome + airIncome;
     const totalGrossProfit = productProfit + totalServiceIncome;
     const totalAllExpenses = totalDailyExpenses + totalMonthlyFixedExpenses;
     const finalMonthlyNetProfit = totalGrossProfit - totalAllExpenses;
@@ -764,6 +778,7 @@ exports.getMonthlyReport = async (req, res) => {
         productProfit,
         batteryChargeIncome,
         vulcanizingIncome,
+        airIncome,
         totalServiceIncome,
         totalGrossProfit,          // মোট লাভ (পণ্য লাভ + সার্ভিস আয়)
         totalDailyExpenses,        // মাসের মোট খুচরা খরচ

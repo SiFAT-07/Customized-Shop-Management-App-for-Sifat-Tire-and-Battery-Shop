@@ -38,6 +38,21 @@ test.beforeEach(async () => {
   await Promise.all([Product.deleteMany({}), SaleAndService.deleteMany({})]);
 });
 
+test('products can be deleted from the product master', async () => {
+  const product = await Product.create({
+    name: 'Delete me',
+    category: 'MOBIL',
+    condition: 'NA',
+    currentStock: 3,
+    defaultBuyingPrice: 400
+  });
+
+  const deleted = await call(controller.deleteProduct, {}, {}, { id: product._id });
+  assert.equal(deleted.statusCode, 200);
+  assert.deepEqual(deleted.body, { success: true, message: 'Product deleted' });
+  assert.equal(await Product.findById(product._id), null);
+});
+
 test('sale stock, edit reconciliation, delete reversal, and profit stay consistent', async () => {
   const product = await Product.create({
     name: 'Test tyre',
@@ -92,4 +107,23 @@ test('services have zero buying cost and local date reports include the entry', 
   assert.equal(report.statusCode, 200);
   assert.equal(report.body.summary.totalServiceIncome, 250);
   assert.equal(report.body.logs.salesAndServices.length, 1);
+});
+
+test('air services are accepted, fully profitable, and included in monthly reporting', async () => {
+  const created = await call(controller.addSaleOrService, {
+    entryType: 'SERVICE',
+    serviceType: 'AIR',
+    quantity: 1,
+    unitSellingPrice: 20,
+    date: '2026-10-23'
+  });
+  assert.equal(created.statusCode, 201);
+  assert.equal(created.body.data.serviceType, 'AIR');
+  assert.equal(created.body.data.totalBuyingCost, 0);
+  assert.equal(created.body.data.profit, 20);
+
+  const report = await call(controller.getMonthlyReport, {}, { year: 2026, month: 10 });
+  assert.equal(report.statusCode, 200);
+  assert.equal(report.body.report.airIncome, 20);
+  assert.equal(report.body.report.totalServiceIncome, 20);
 });

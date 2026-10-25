@@ -30,7 +30,7 @@ const saleAndServiceSchema = new mongoose.Schema({
   // --- যদি SERVICE হয় ---
   serviceType: {
     type: String,
-    enum: ['BATTERY_CHARGE', 'VULCANIZING', 'OTHER_SERVICE', 'NA'],
+    enum: ['BATTERY_CHARGE', 'VULCANIZING', 'AIR', 'OTHER_SERVICE', 'NA'],
     default: 'NA'
   },
 

@@ -6,6 +6,7 @@ const shopController = require('../controllers/shopController');
 router.get('/products', shopController.getProducts);
 router.post('/products', shopController.createProduct);
 router.put('/products/:id', shopController.updateProduct);
+router.delete('/products/:id', shopController.deleteProduct);
 router.post('/stock-in', shopController.addStockPurchase);
 router.delete('/stock-in/:id', shopController.deleteStockPurchase);
 

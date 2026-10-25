@@ -96,6 +96,21 @@ const EXPENSE_LABELS = {
   OTHER_MONTHLY: 'অন্যান্য মাসিক খরচ'
 };
 
+const SERVICE_LABELS = {
+  BATTERY_CHARGE: 'ব্যাটারি চার্জ',
+  VULCANIZING: 'টায়ার ভলকানাইজিং',
+  AIR: 'হাওয়া',
+  OTHER_SERVICE: 'অন্যান্য সার্ভিস'
+};
+
+const SERVICE_AMOUNT_PRESETS = {
+  BATTERY_CHARGE: [150, 250, 350],
+  VULCANIZING: [100, 120, 150, 200],
+  AIR: [10, 20, 30, 40]
+};
+
+const formatMoney = (value) => `৳ ${Number(value || 0).toLocaleString('en-IN')}`;
+
 const getDateInputValue = (date) => {
   const year = date.getFullYear();
   const month = String(date.getMonth() + 1).padStart(2, '0');
@@ -318,6 +333,25 @@ export default function App() {
     if (deleted) fetchDailySummary();
   };
 
+  const handleDeleteProduct = async (product) => {
+    if (!window.confirm(`আপনি কি নিশ্চিত এই প্রোডাক্টটি তালিকা থেকে সম্পূর্ণ মুছে ফেলতে চান?\n\n${product.name}`)) return;
+    const deleted = await submitRequest(`${API_BASE}/products/${product._id}`, { method: 'DELETE' });
+    if (deleted) {
+      setProducts((currentProducts) => currentProducts.filter((item) => item._id !== product._id));
+    }
+  };
+
+  const inventoryValuation = products.reduce((summary, product) => {
+    const stock = Number(product.currentStock) || 0;
+    const stockValue = stock * (Number(product.defaultBuyingPrice) || 0);
+    summary.totalUnits += stock;
+    summary.totalValue += stockValue;
+    if (product.category === 'TIRE') summary.tireValue += stockValue;
+    else if (product.category === 'BATTERY') summary.batteryValue += stockValue;
+    else summary.otherValue += stockValue;
+    return summary;
+  }, { totalUnits: 0, totalValue: 0, tireValue: 0, batteryValue: 0, otherValue: 0 });
+
   return (
     <div className="min-h-screen bg-[radial-gradient(circle_at_top,_#ecfdf5,_transparent_38%),linear-gradient(135deg,#f8fafc_0%,#eef2ff_100%)] pb-24 font-sans text-slate-900">
       <Toast toast={toast} onClose={() => setToast(null)} />
@@ -405,7 +439,7 @@ export default function App() {
                 className={`${interactiveButton} flex items-center justify-center gap-2 bg-gradient-to-r from-blue-600 to-indigo-700 text-white font-bold py-4 px-3 rounded-xl shadow-md text-base`}
               >
                 <Wrench className="w-6 h-6 shrink-0" />
-                <span>চার্জ / ভলকানাইজিং</span>
+                <span>চার্জ / ভলকানাইজিং / হাওয়া</span>
               </button>
 
               <button
@@ -443,10 +477,12 @@ export default function App() {
                       <div className="space-y-1 pr-2">
                         <div className="flex items-center gap-2 flex-wrap">
                           <span className={`text-[11px] font-bold px-2 py-0.5 rounded ${
-                            item.entryType === 'SERVICE' ? 'bg-blue-100 text-blue-800' : 
+                            item.entryType === 'SERVICE'
+                              ? item.serviceType === 'AIR' ? 'bg-cyan-100 text-cyan-800' : 'bg-blue-100 text-blue-800'
+                              :
                             item.saleChannel === 'WHOLESALE' ? 'bg-purple-100 text-purple-800' : 'bg-emerald-100 text-emerald-800'
                           }`}>
-                            {item.entryType === 'SERVICE' ? 'সার্ভিস' : item.saleChannel === 'WHOLESALE' ? 'পাইকারি বিক্রি' : 'খুচরা বিক্রি'}
+                            {item.entryType === 'SERVICE' ? (item.serviceType === 'AIR' ? 'হাওয়া সার্ভিস' : 'সার্ভিস') : item.saleChannel === 'WHOLESALE' ? 'পাইকারি বিক্রি' : 'খুচরা বিক্রি'}
                           </span>
                           {item.isDirectFromOutside && (
                             <span className="text-[11px] bg-amber-100 text-amber-800 px-2 py-0.5 rounded font-semibold">
@@ -457,7 +493,7 @@ export default function App() {
 
                         <p className="font-bold text-base text-slate-900">
                           {item.entryType === 'SERVICE' 
-                            ? (item.serviceType === 'BATTERY_CHARGE' ? 'ব্যাটারি চার্জ' : 'টায়ার ভলকানাইজিং')
+                            ? (SERVICE_LABELS[item.serviceType] || 'অন্যান্য সার্ভিস')
                             : (item.product?.name || item.customProductName || 'পণ্য বিক্রি')}
                           {item.quantity > 1 && <span className="text-emerald-700"> × {item.quantity} পিস</span>}
                         </p>
@@ -584,7 +620,7 @@ export default function App() {
                         <AlertTriangle className="w-3 h-3 mr-1" /> মাল কম আছে
                       </p>
                     )}
-                    <div className="flex gap-1.5">
+                    <div className="flex flex-wrap justify-end gap-1.5">
                       <button
                         onClick={() => { setRestockingProduct(p); setActiveModal('RESTOCK'); }}
                         className="px-2.5 py-1.5 rounded-lg bg-amber-100 text-amber-800 text-xs font-bold"
@@ -597,10 +633,43 @@ export default function App() {
                       >
                         এডিট
                       </button>
+                      <button
+                        onClick={() => handleDeleteProduct(p)}
+                        className="px-2.5 py-1.5 rounded-lg bg-rose-100 text-rose-700 text-xs font-bold flex items-center gap-1"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" /> মুছুন
+                      </button>
                     </div>
                   </div>
                 </div>
               ))}
+            </div>
+
+            <div className="sticky bottom-20 z-10 rounded-2xl border border-emerald-200 bg-emerald-950 p-4 text-white shadow-xl">
+              <div className="flex items-center justify-between gap-3 border-b border-emerald-800 pb-3">
+                <div>
+                  <p className="text-xs font-semibold text-emerald-200">মোট স্টকের কেনা মূল্য</p>
+                  <p className="mt-1 text-2xl font-extrabold text-yellow-300">{formatMoney(inventoryValuation.totalValue)}</p>
+                </div>
+                <div className="text-right">
+                  <p className="text-xs font-semibold text-emerald-200">মোট মালের সংখ্যা</p>
+                  <p className="mt-1 text-2xl font-extrabold">{inventoryValuation.totalUnits.toLocaleString('en-IN')} পিস</p>
+                </div>
+              </div>
+              <div className="grid grid-cols-3 gap-2 pt-3 text-xs">
+                <div className="rounded-lg bg-white/10 p-2">
+                  <p className="text-emerald-200">টায়ার</p>
+                  <p className="mt-1 font-extrabold">{formatMoney(inventoryValuation.tireValue)}</p>
+                </div>
+                <div className="rounded-lg bg-white/10 p-2">
+                  <p className="text-emerald-200">ব্যাটারি</p>
+                  <p className="mt-1 font-extrabold">{formatMoney(inventoryValuation.batteryValue)}</p>
+                </div>
+                <div className="rounded-lg bg-white/10 p-2">
+                  <p className="text-emerald-200">অন্যান্য</p>
+                  <p className="mt-1 font-extrabold">{formatMoney(inventoryValuation.otherValue)}</p>
+                </div>
+              </div>
             </div>
           </div>
         )}
@@ -652,6 +721,10 @@ export default function App() {
                   <div className="flex justify-between text-sm text-blue-700">
                     <span>ভলকানাইজিং থেকে আয়:</span>
                     <span className="font-bold">+ ৳ {monthlyData.report.vulcanizingIncome.toLocaleString()}</span>
+                  </div>
+                  <div className="flex justify-between text-sm text-cyan-700">
+                    <span>হাওয়া থেকে আয়:</span>
+                    <span className="font-bold">+ ৳ {monthlyData.report.airIncome.toLocaleString()}</span>
                   </div>
                   <div className="border-t pt-2 flex justify-between text-base font-extrabold text-emerald-800">
                     <span>সর্বমোট গ্রস লাভ (খরচ বাদ দেওয়ার আগে):</span>
@@ -1133,7 +1206,7 @@ function ProductSaleModal({ products, editingSale, selectedDate, onClose, onSucc
 }
 
 /* ========================================================
-   SUB-COMPONENT 2: সার্ভিস আয় (ব্যাটারি চার্জ ও ভলকানাইজিং)
+   SUB-COMPONENT 2: সার্ভিস আয়
 ======================================================== */
 function ServiceEntryModal({ editingSale, selectedDate, onClose, onSuccess }) {
   const [serviceType, setServiceType] = useState(editingSale?.serviceType || 'BATTERY_CHARGE');
@@ -1180,12 +1253,12 @@ function ServiceEntryModal({ editingSale, selectedDate, onClose, onSuccess }) {
     <div className="fixed inset-0 bg-black/60 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4">
       <div className="bg-white w-full max-w-lg rounded-t-2xl sm:rounded-2xl p-5 space-y-4">
         <div className="flex justify-between items-center border-b pb-3">
-          <h3 className="text-lg font-extrabold text-blue-800">ব্যাটারি চার্জ ও ভলকানাইজিং আয়</h3>
+          <h3 className="text-lg font-extrabold text-blue-800">সার্ভিস আয় (চার্জ, ভলকানাইজিং ও হাওয়া)</h3>
           <button onClick={onClose} className="p-2 bg-slate-100 rounded-full"><X className="w-5 h-5" /></button>
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-4">
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <button
               type="button"
               onClick={() => setServiceType('BATTERY_CHARGE')}
@@ -1204,6 +1277,35 @@ function ServiceEntryModal({ editingSale, selectedDate, onClose, onSuccess }) {
             >
               🔧 ভলকানাইজিং
             </button>
+            <button
+              type="button"
+              onClick={() => setServiceType('AIR')}
+              className={`${interactiveButton} py-4 rounded-xl font-bold text-base border-2 ${
+                serviceType === 'AIR' ? 'bg-cyan-600 text-white border-cyan-600' : 'bg-slate-50 text-slate-700'
+              }`}
+            >
+              💨 হাওয়া
+            </button>
+          </div>
+
+          <div>
+            <p className="text-sm font-bold text-slate-700 mb-2">দ্রুত টাকার পরিমাণ বাছাই করুন</p>
+            <div className="flex flex-wrap gap-2">
+              {(SERVICE_AMOUNT_PRESETS[serviceType] || []).map((preset) => (
+                <button
+                  key={preset}
+                  type="button"
+                  onClick={() => setAmount(String(preset))}
+                  className={`${interactiveButton} rounded-full border-2 px-4 py-2 text-sm font-extrabold ${
+                    Number(amount) === preset
+                      ? 'border-blue-600 bg-blue-50 text-blue-700'
+                      : 'border-slate-200 bg-white text-slate-700 hover:border-blue-400 hover:text-blue-700'
+                  }`}
+                >
+                  ৳ {preset}
+                </button>
+              ))}
+            </div>
           </div>
 
           <div>
