@@ -649,18 +649,12 @@ export default function App() {
                     <span className="flex h-8 w-8 items-center justify-center rounded-full bg-emerald-800 text-sm font-extrabold text-white">
                       {section}
                     </span>
-                    <h3 className="font-extrabold text-slate-800">
-                      {section === '#' ? 'অন্যান্য / নো ব্র্যান্ড' : section}
-                    </h3>
                   </div>
                   <div className="space-y-2.5">
                   {sectionProducts.map((p) => (
                 <div key={p._id} className="bg-white p-4 rounded-xl shadow-sm border border-slate-200 flex justify-between items-center">
                   <div>
                     <div className="flex items-center gap-2">
-                      <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-indigo-100 text-lg font-extrabold text-indigo-700">
-                        {(p.company || p.name || '?').charAt(0).toUpperCase()}
-                      </span>
                       <div className="flex flex-wrap items-center gap-2">
                       <span className="text-xs font-bold px-2 py-0.5 rounded bg-slate-100 text-slate-700">
                         {CATEGORY_LABELS[p.category]}
