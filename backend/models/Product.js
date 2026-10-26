@@ -7,6 +7,11 @@ const productSchema = new mongoose.Schema({
     trim: true 
     // উদাহরণ: "Maxxis 185/65 R15", "Hamko 100Ah IPS Battery", "Mobil Super 1000 4L"
   },
+  company: {
+    type: String,
+    trim: true,
+    default: ''
+  },
   category: {
     type: String,
     required: true,

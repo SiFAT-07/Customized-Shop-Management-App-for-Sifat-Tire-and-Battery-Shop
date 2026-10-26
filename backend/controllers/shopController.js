@@ -119,7 +119,7 @@ exports.createProduct = async (req, res) => {
 exports.updateProduct = async (req, res) => {
   try {
     const allowedFields = [
-      'name', 'category', 'subCategory', 'condition', 'defaultBuyingPrice',
+      'name', 'company', 'category', 'subCategory', 'condition', 'defaultBuyingPrice',
       'defaultRetailPrice', 'defaultWholesalePrice', 'lowStockAlert'
     ];
     const updates = {};
@@ -130,6 +130,7 @@ exports.updateProduct = async (req, res) => {
       return res.status(400).json({ success: false, message: 'পণ্যের নাম দিন।' });
     }
     if (updates.name !== undefined) updates.name = String(updates.name).trim();
+    if (updates.company !== undefined) updates.company = String(updates.company).trim();
     for (const field of ['defaultBuyingPrice', 'defaultRetailPrice', 'defaultWholesalePrice', 'lowStockAlert']) {
       if (updates[field] !== undefined && (!isFiniteNumber(updates[field]) || Number(updates[field]) < 0)) {
         return res.status(400).json({ success: false, message: 'দাম বা স্টক সতর্কতার মান সঠিক নয়।' });
@@ -163,7 +164,7 @@ exports.deleteProduct = async (req, res) => {
 // দোকানে মাল তোলা / স্টক যোগ করা (Stock In)
 exports.addStockPurchase = async (req, res) => {
   try {
-    const { productId, sourceType, supplierName, quantity, unitBuyingPrice, newRetailPrice, newWholesalePrice, note, date } = req.body;
+    const { productId, sourceType, supplierName, company, quantity, unitBuyingPrice, newRetailPrice, newWholesalePrice, note, date } = req.body;
 
     const product = await Product.findById(productId);
     if (!product) return res.status(404).json({ success: false, message: 'পণ্যটি পাওয়া যায়নি!' });
@@ -193,6 +194,7 @@ exports.addStockPurchase = async (req, res) => {
     // ২. মেইন প্রোডাক্টের স্টক বাড়ানো এবং সর্বশেষ কেনা দাম আপডেট করা
     product.currentStock += qty;
     product.defaultBuyingPrice = buyPrice;
+    if (company !== undefined) product.company = String(company).trim();
     if (newRetailPrice !== undefined && newRetailPrice !== '') {
       if (!isFiniteNumber(newRetailPrice) || Number(newRetailPrice) < 0) {
         await purchase.deleteOne();

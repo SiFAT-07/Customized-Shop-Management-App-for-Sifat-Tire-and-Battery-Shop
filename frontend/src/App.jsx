@@ -195,6 +195,8 @@ export default function App() {
   const [editingSale, setEditingSale] = useState(null);
   const [editingProduct, setEditingProduct] = useState(null);
   const [restockingProduct, setRestockingProduct] = useState(null);
+  const [stockSummaryOpen, setStockSummaryOpen] = useState(false);
+  const [inventoryCategory, setInventoryCategory] = useState('ALL');
 
   useEffect(() => {
     const handleToast = (event) => {
@@ -351,6 +353,18 @@ export default function App() {
     else summary.otherValue += stockValue;
     return summary;
   }, { totalUnits: 0, totalValue: 0, tireValue: 0, batteryValue: 0, otherValue: 0 });
+  const displayedProducts = products
+    .filter((product) => {
+      if (inventoryCategory === 'ALL') return true;
+      if (inventoryCategory === 'OTHER') return !['TIRE', 'BATTERY'].includes(product.category);
+      return product.category === inventoryCategory;
+    })
+    .sort((a, b) => {
+      const aSortKey = String(a.company || a.name || '');
+      const bSortKey = String(b.company || b.name || '');
+      return aSortKey.localeCompare(bSortKey, undefined, { sensitivity: 'base' })
+        || String(a.name || '').localeCompare(String(b.name || ''), undefined, { sensitivity: 'base' });
+    });
 
   return (
     <div className="min-h-screen bg-[radial-gradient(circle_at_top,_#ecfdf5,_transparent_38%),linear-gradient(135deg,#f8fafc_0%,#eef2ff_100%)] pb-24 font-sans text-slate-900">
@@ -574,21 +588,50 @@ export default function App() {
         ========================================== */}
         {activeTab === 'STOCK' && (
           <div className="space-y-4">
-            <div className="flex justify-between items-center bg-white p-4 rounded-xl shadow-sm">
+            <div className="flex flex-wrap justify-between items-center gap-2 bg-white p-4 rounded-xl shadow-sm">
               <div>
                 <h2 className="text-lg font-bold">Product Master & Inventory</h2>
                 <p className="text-xs text-slate-500">স্টক শূন্য হলেও product এখানে থাকবে। দাম/details এডিট বা একই item restock করুন।</p>
               </div>
-              <button
-                onClick={() => setActiveModal('NEW_PRODUCT')}
-                className="bg-emerald-700 text-white px-4 py-2.5 rounded-xl font-bold text-sm flex items-center gap-1.5 shadow"
-              >
-                <PlusCircle className="w-4 h-4" /> নতুন আইটেম যোগ
-              </button>
+              <div className="flex flex-wrap justify-end gap-2">
+                <button
+                  onClick={() => setActiveModal('NEW_PRODUCT')}
+                  className="bg-emerald-700 text-white px-4 py-2.5 rounded-xl font-bold text-sm flex items-center gap-1.5 shadow"
+                >
+                  <PlusCircle className="w-4 h-4" /> নতুন আইটেম যোগ
+                </button>
+                <button
+                  onClick={() => setStockSummaryOpen(true)}
+                  className="bg-slate-100 text-emerald-800 px-3 py-2.5 rounded-xl font-bold text-xs border border-emerald-200"
+                >
+                  📊 স্টক হিসাব দেখুন
+                </button>
+              </div>
+            </div>
+
+            <div className="flex flex-wrap gap-2">
+              {[
+                ['ALL', 'সবগুলো'],
+                ['TIRE', 'টায়ার'],
+                ['BATTERY', 'ব্যাটারি'],
+                ['OTHER', 'মবিল / অন্যান্য']
+              ].map(([value, label]) => (
+                <button
+                  key={value}
+                  onClick={() => setInventoryCategory(value)}
+                  className={`rounded-full border px-3 py-2 text-xs font-bold ${
+                    inventoryCategory === value
+                      ? 'border-emerald-700 bg-emerald-700 text-white'
+                      : 'border-slate-200 bg-white text-slate-700'
+                  }`}
+                >
+                  {label}
+                </button>
+              ))}
             </div>
 
             <div className="space-y-2.5">
-              {products.map((p) => (
+              {displayedProducts.map((p) => (
                 <div key={p._id} className="bg-white p-4 rounded-xl shadow-sm border border-slate-200 flex justify-between items-center">
                   <div>
                     <div className="flex items-center gap-2">
@@ -604,6 +647,11 @@ export default function App() {
                       )}
                     </div>
                     <h3 className="font-bold text-base mt-1 text-slate-900">{p.name}</h3>
+                    {p.company && (
+                      <span className="inline-block mt-1 rounded-full bg-indigo-50 px-2 py-0.5 text-xs font-bold text-indigo-700">
+                        {p.company}
+                      </span>
+                    )}
                     <p className="text-xs text-slate-500 mt-0.5">
                       কেনা দাম: <b>৳{p.defaultBuyingPrice}</b> | খুচরা: ৳{p.defaultRetailPrice} | পাইকারি: ৳{p.defaultWholesalePrice}
                     </p>
@@ -643,34 +691,13 @@ export default function App() {
                   </div>
                 </div>
               ))}
+              {displayedProducts.length === 0 && (
+                <p className="rounded-xl bg-white py-8 text-center text-sm text-slate-400">
+                  এই ক্যাটাগরিতে কোনো পণ্য নেই।
+                </p>
+              )}
             </div>
 
-            <div className="sticky bottom-20 z-10 rounded-2xl border border-emerald-200 bg-emerald-950 p-4 text-white shadow-xl">
-              <div className="flex items-center justify-between gap-3 border-b border-emerald-800 pb-3">
-                <div>
-                  <p className="text-xs font-semibold text-emerald-200">মোট স্টকের কেনা মূল্য</p>
-                  <p className="mt-1 text-2xl font-extrabold text-yellow-300">{formatMoney(inventoryValuation.totalValue)}</p>
-                </div>
-                <div className="text-right">
-                  <p className="text-xs font-semibold text-emerald-200">মোট মালের সংখ্যা</p>
-                  <p className="mt-1 text-2xl font-extrabold">{inventoryValuation.totalUnits.toLocaleString('en-IN')} পিস</p>
-                </div>
-              </div>
-              <div className="grid grid-cols-3 gap-2 pt-3 text-xs">
-                <div className="rounded-lg bg-white/10 p-2">
-                  <p className="text-emerald-200">টায়ার</p>
-                  <p className="mt-1 font-extrabold">{formatMoney(inventoryValuation.tireValue)}</p>
-                </div>
-                <div className="rounded-lg bg-white/10 p-2">
-                  <p className="text-emerald-200">ব্যাটারি</p>
-                  <p className="mt-1 font-extrabold">{formatMoney(inventoryValuation.batteryValue)}</p>
-                </div>
-                <div className="rounded-lg bg-white/10 p-2">
-                  <p className="text-emerald-200">অন্যান্য</p>
-                  <p className="mt-1 font-extrabold">{formatMoney(inventoryValuation.otherValue)}</p>
-                </div>
-              </div>
-            </div>
           </div>
         )}
 
@@ -884,6 +911,13 @@ export default function App() {
             setActiveModal('NONE');
             fetchProducts();
           }}
+        />
+      )}
+
+      {stockSummaryOpen && (
+        <StockValuationModal
+          valuation={inventoryValuation}
+          onClose={() => setStockSummaryOpen(false)}
         />
       )}
 
@@ -1348,6 +1382,7 @@ function StockInModal({ products, selectedDate, initialProduct = null, onClose, 
   const [newRetailPrice, setNewRetailPrice] = useState('');
   const [newWholesalePrice, setNewWholesalePrice] = useState('');
   const [supplierName, setSupplierName] = useState('');
+  const [company, setCompany] = useState(initialProduct?.company || '');
   const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
@@ -1356,6 +1391,7 @@ function StockInModal({ products, selectedDate, initialProduct = null, onClose, 
       setUnitBuyingPrice(initialProduct.defaultBuyingPrice);
       setNewRetailPrice(initialProduct.defaultRetailPrice);
       setNewWholesalePrice(initialProduct.defaultWholesalePrice);
+      setCompany(initialProduct.company || '');
     }
   }, [initialProduct]);
 
@@ -1382,6 +1418,7 @@ function StockInModal({ products, selectedDate, initialProduct = null, onClose, 
           productId,
           sourceType,
           supplierName,
+          company: company.trim(),
           quantity: Number(quantity),
           unitBuyingPrice: Number(unitBuyingPrice),
           newRetailPrice: Number(newRetailPrice),
@@ -1441,6 +1478,17 @@ function StockInModal({ products, selectedDate, initialProduct = null, onClose, 
                 <option key={p._id} value={p._id}>{p.name} ({p.condition === 'OLD' ? 'পুরাতন' : 'নতুন'})</option>
               ))}
             </select>
+          </div>
+
+          <div>
+            <label className="block text-xs font-bold text-slate-700 mb-1">কোম্পানি / ব্র্যান্ডের নাম (ঐচ্ছিক)</label>
+            <input
+              type="text"
+              placeholder="যেমন: Linglong, Dunlop, Volta, Hamko, Shell"
+              value={company}
+              onChange={(e) => setCompany(e.target.value)}
+              className={`w-full border border-slate-300 rounded-xl p-3 ${inputClasses}`}
+            />
           </div>
 
           <div className="grid grid-cols-2 gap-3">
@@ -1921,8 +1969,46 @@ function ExpensePdfViewer({ expenses, summary, startDate, endDate, onClose }) {
   );
 }
 
+function StockValuationModal({ valuation, onClose }) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/60 p-0 sm:items-center sm:p-4">
+      <div className="w-full max-w-lg space-y-4 rounded-t-2xl bg-white p-5 sm:rounded-2xl">
+        <div className="flex items-center justify-between border-b pb-3">
+          <h3 className="text-lg font-extrabold text-emerald-800">স্টক হিসাব</h3>
+          <button onClick={onClose} className="rounded-full bg-slate-100 p-2" aria-label="বন্ধ করুন">
+            <X className="h-5 w-5" />
+          </button>
+        </div>
+        <div className="rounded-xl bg-emerald-950 p-4 text-white">
+          <p className="text-sm font-semibold text-emerald-200">মোট স্টকের কেনা মূল্য</p>
+          <p className="mt-1 text-3xl font-extrabold text-yellow-300">{formatMoney(valuation.totalValue)}</p>
+          <p className="mt-2 text-sm text-emerald-100">
+            মোট মালের সংখ্যা: <b>{valuation.totalUnits.toLocaleString('en-IN')} পিস</b>
+          </p>
+        </div>
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+          {[
+            ['টায়ার', valuation.tireValue],
+            ['ব্যাটারি', valuation.batteryValue],
+            ['মবিল / অন্যান্য', valuation.otherValue]
+          ].map(([label, value]) => (
+            <div key={label} className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+              <p className="text-xs font-bold text-slate-500">{label}</p>
+              <p className="mt-1 font-extrabold text-slate-900">{formatMoney(value)}</p>
+            </div>
+          ))}
+        </div>
+        <button onClick={onClose} className="w-full rounded-xl bg-slate-800 py-3 font-bold text-white">
+          বন্ধ করুন
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function ProductMasterModal({ product, onClose, onSuccess }) {
   const [name, setName] = useState(product?.name || '');
+  const [company, setCompany] = useState(product?.company || '');
   const [defaultBuyingPrice, setDefaultBuyingPrice] = useState(product?.defaultBuyingPrice ?? '');
   const [defaultRetailPrice, setDefaultRetailPrice] = useState(product?.defaultRetailPrice ?? '');
   const [defaultWholesalePrice, setDefaultWholesalePrice] = useState(product?.defaultWholesalePrice ?? '');
@@ -1940,6 +2026,7 @@ function ProductMasterModal({ product, onClose, onSuccess }) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           name: name.trim(),
+          company: company.trim(),
           defaultBuyingPrice: Number(defaultBuyingPrice),
           defaultRetailPrice: Number(defaultRetailPrice),
           defaultWholesalePrice: Number(defaultWholesalePrice),
@@ -1962,6 +2049,7 @@ function ProductMasterModal({ product, onClose, onSuccess }) {
         <p className="text-xs text-slate-500">এখান থেকে নাম ও দাম বদলাবে; বর্তমান stock বদলাবে না। Stock বাড়াতে Restock ব্যবহার করুন।</p>
         <form onSubmit={handleSubmit} className="space-y-3">
           <input required value={name} onChange={(e) => setName(e.target.value)} placeholder="পণ্যের নাম" className="w-full border-2 border-slate-300 rounded-xl p-3 font-bold" />
+          <input value={company} onChange={(e) => setCompany(e.target.value)} placeholder="কোম্পানি / ব্র্যান্ডের নাম (ঐচ্ছিক)" className="w-full border border-slate-300 rounded-xl p-3" />
           <div className="grid grid-cols-2 gap-3">
             <label className="text-xs font-bold">কেনা দাম
               <input type="number" min="0" value={defaultBuyingPrice} onChange={(e) => setDefaultBuyingPrice(e.target.value)} className="w-full border rounded-xl p-3 text-base mt-1" />
@@ -1990,6 +2078,7 @@ function ProductMasterModal({ product, onClose, onSuccess }) {
 ======================================================== */
 function NewProductModal({ onClose, onSuccess }) {
   const [name, setName] = useState('');
+  const [company, setCompany] = useState('');
   const [category, setCategory] = useState('TIRE');
   const [condition, setCondition] = useState('NEW');
   const [currentStock, setCurrentStock] = useState(0);
@@ -2007,6 +2096,7 @@ function NewProductModal({ onClose, onSuccess }) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           name,
+          company: company.trim(),
           category,
           condition: (category === 'MOBIL' || category === 'BATTERY_WATER') ? 'NA' : condition,
           currentStock: Number(currentStock),
@@ -2069,6 +2159,16 @@ function NewProductModal({ onClose, onSuccess }) {
               value={name}
               onChange={(e) => setName(e.target.value)}
               className="w-full border border-slate-300 rounded-xl p-3 font-bold"
+            />
+          </div>
+          <div>
+            <label className="block text-xs font-bold text-slate-700 mb-1">কোম্পানি / ব্র্যান্ডের নাম (ঐচ্ছিক)</label>
+            <input
+              type="text"
+              placeholder="যেমন: Linglong, Dunlop, Volta, Hamko, Shell"
+              value={company}
+              onChange={(e) => setCompany(e.target.value)}
+              className="w-full border border-slate-300 rounded-xl p-3"
             />
           </div>
 
