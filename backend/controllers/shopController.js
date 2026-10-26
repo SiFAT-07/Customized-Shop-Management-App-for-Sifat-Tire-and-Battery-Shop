@@ -131,6 +131,9 @@ exports.updateProduct = async (req, res) => {
     }
     if (updates.name !== undefined) updates.name = String(updates.name).trim();
     if (updates.company !== undefined) updates.company = String(updates.company).trim();
+    if (updates.category !== undefined && !['TIRE', 'BATTERY', 'TUBE', 'MOBIL', 'BATTERY_WATER'].includes(updates.category)) {
+      return res.status(400).json({ success: false, message: 'ক্যাটাগরি সঠিক নয়।' });
+    }
     for (const field of ['defaultBuyingPrice', 'defaultRetailPrice', 'defaultWholesalePrice', 'lowStockAlert']) {
       if (updates[field] !== undefined && (!isFiniteNumber(updates[field]) || Number(updates[field]) < 0)) {
         return res.status(400).json({ success: false, message: 'দাম বা স্টক সতর্কতার মান সঠিক নয়।' });

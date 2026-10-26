@@ -365,6 +365,18 @@ export default function App() {
       return aSortKey.localeCompare(bSortKey, undefined, { sensitivity: 'base' })
         || String(a.name || '').localeCompare(String(b.name || ''), undefined, { sensitivity: 'base' });
     });
+  const groupedProducts = displayedProducts.reduce((groups, product) => {
+    const company = String(product.company || '').trim();
+    const section = company ? company.charAt(0).toUpperCase() : '#';
+    if (!groups[section]) groups[section] = [];
+    groups[section].push(product);
+    return groups;
+  }, {});
+  const inventorySections = Object.entries(groupedProducts).sort(([a], [b]) => {
+    if (a === '#') return 1;
+    if (b === '#') return -1;
+    return a.localeCompare(b);
+  });
 
   return (
     <div className="min-h-screen bg-[radial-gradient(circle_at_top,_#ecfdf5,_transparent_38%),linear-gradient(135deg,#f8fafc_0%,#eef2ff_100%)] pb-24 font-sans text-slate-900">
@@ -630,11 +642,26 @@ export default function App() {
               ))}
             </div>
 
-            <div className="space-y-2.5">
-              {displayedProducts.map((p) => (
+            <div className="space-y-4">
+              {inventorySections.map(([section, sectionProducts]) => (
+                <section key={section}>
+                  <div className="sticky top-[76px] z-10 mb-2 flex items-center gap-2 rounded-lg bg-slate-100 px-3 py-2">
+                    <span className="flex h-8 w-8 items-center justify-center rounded-full bg-emerald-800 text-sm font-extrabold text-white">
+                      {section}
+                    </span>
+                    <h3 className="font-extrabold text-slate-800">
+                      {section === '#' ? 'অন্যান্য / নো ব্র্যান্ড' : section}
+                    </h3>
+                  </div>
+                  <div className="space-y-2.5">
+                  {sectionProducts.map((p) => (
                 <div key={p._id} className="bg-white p-4 rounded-xl shadow-sm border border-slate-200 flex justify-between items-center">
                   <div>
                     <div className="flex items-center gap-2">
+                      <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-indigo-100 text-lg font-extrabold text-indigo-700">
+                        {(p.company || p.name || '?').charAt(0).toUpperCase()}
+                      </span>
+                      <div className="flex flex-wrap items-center gap-2">
                       <span className="text-xs font-bold px-2 py-0.5 rounded bg-slate-100 text-slate-700">
                         {CATEGORY_LABELS[p.category]}
                       </span>
@@ -645,6 +672,7 @@ export default function App() {
                           {p.condition === 'NEW' ? 'নতুন (New)' : 'পুরাতন (Old)'}
                         </span>
                       )}
+                      </div>
                     </div>
                     <h3 className="font-bold text-base mt-1 text-slate-900">{p.name}</h3>
                     {p.company && (
@@ -690,6 +718,9 @@ export default function App() {
                     </div>
                   </div>
                 </div>
+              ))}
+                  </div>
+                </section>
               ))}
               {displayedProducts.length === 0 && (
                 <p className="rounded-xl bg-white py-8 text-center text-sm text-slate-400">
@@ -2009,6 +2040,7 @@ function StockValuationModal({ valuation, onClose }) {
 function ProductMasterModal({ product, onClose, onSuccess }) {
   const [name, setName] = useState(product?.name || '');
   const [company, setCompany] = useState(product?.company || '');
+  const [category, setCategory] = useState(product?.category || 'TIRE');
   const [defaultBuyingPrice, setDefaultBuyingPrice] = useState(product?.defaultBuyingPrice ?? '');
   const [defaultRetailPrice, setDefaultRetailPrice] = useState(product?.defaultRetailPrice ?? '');
   const [defaultWholesalePrice, setDefaultWholesalePrice] = useState(product?.defaultWholesalePrice ?? '');
@@ -2027,6 +2059,7 @@ function ProductMasterModal({ product, onClose, onSuccess }) {
         body: JSON.stringify({
           name: name.trim(),
           company: company.trim(),
+          category,
           defaultBuyingPrice: Number(defaultBuyingPrice),
           defaultRetailPrice: Number(defaultRetailPrice),
           defaultWholesalePrice: Number(defaultWholesalePrice),
@@ -2050,6 +2083,18 @@ function ProductMasterModal({ product, onClose, onSuccess }) {
         <form onSubmit={handleSubmit} className="space-y-3">
           <input required value={name} onChange={(e) => setName(e.target.value)} placeholder="পণ্যের নাম" className="w-full border-2 border-slate-300 rounded-xl p-3 font-bold" />
           <input value={company} onChange={(e) => setCompany(e.target.value)} placeholder="কোম্পানি / ব্র্যান্ডের নাম (ঐচ্ছিক)" className="w-full border border-slate-300 rounded-xl p-3" />
+          <label className="block text-xs font-bold text-slate-700">
+            ক্যাটাগরি
+            <select
+              value={category}
+              onChange={(e) => setCategory(e.target.value)}
+              className="mt-1 w-full rounded-xl border border-slate-300 bg-white p-3 text-sm font-bold"
+            >
+              {Object.entries(CATEGORY_LABELS).map(([value, label]) => (
+                <option key={value} value={value}>{label}</option>
+              ))}
+            </select>
+          </label>
           <div className="grid grid-cols-2 gap-3">
             <label className="text-xs font-bold">কেনা দাম
               <input type="number" min="0" value={defaultBuyingPrice} onChange={(e) => setDefaultBuyingPrice(e.target.value)} className="w-full border rounded-xl p-3 text-base mt-1" />
