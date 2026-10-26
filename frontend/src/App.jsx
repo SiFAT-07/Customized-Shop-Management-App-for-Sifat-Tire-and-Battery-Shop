@@ -346,13 +346,16 @@ export default function App() {
   const inventoryValuation = products.reduce((summary, product) => {
     const stock = Number(product.currentStock) || 0;
     const stockValue = stock * (Number(product.defaultBuyingPrice) || 0);
+    const category = String(product.category || 'OTHER').trim() || 'OTHER';
     summary.totalUnits += stock;
     summary.totalValue += stockValue;
-    if (product.category === 'TIRE') summary.tireValue += stockValue;
-    else if (product.category === 'BATTERY') summary.batteryValue += stockValue;
-    else summary.otherValue += stockValue;
+    if (!summary.categoryBreakdown[category]) {
+      summary.categoryBreakdown[category] = { quantity: 0, value: 0 };
+    }
+    summary.categoryBreakdown[category].quantity += stock;
+    summary.categoryBreakdown[category].value += stockValue;
     return summary;
-  }, { totalUnits: 0, totalValue: 0, tireValue: 0, batteryValue: 0, otherValue: 0 });
+  }, { totalUnits: 0, totalValue: 0, categoryBreakdown: {} });
   const displayedProducts = products
     .filter((product) => {
       if (inventoryCategory === 'ALL') return true;
@@ -2011,15 +2014,22 @@ function StockValuationModal({ valuation, onClose }) {
             মোট মালের সংখ্যা: <b>{valuation.totalUnits.toLocaleString('en-IN')} পিস</b>
           </p>
         </div>
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-          {[
-            ['টায়ার', valuation.tireValue],
-            ['ব্যাটারি', valuation.batteryValue],
-            ['মবিল / অন্যান্য', valuation.otherValue]
-          ].map(([label, value]) => (
-            <div key={label} className="rounded-xl border border-slate-200 bg-slate-50 p-3">
-              <p className="text-xs font-bold text-slate-500">{label}</p>
-              <p className="mt-1 font-extrabold text-slate-900">{formatMoney(value)}</p>
+        <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3">
+          {Object.entries(valuation.categoryBreakdown)
+            .sort(([a], [b]) => {
+              const labelA = CATEGORY_LABELS[a] || a;
+              const labelB = CATEGORY_LABELS[b] || b;
+              return labelA.localeCompare(labelB, 'bn');
+            })
+            .map(([category, breakdown]) => (
+            <div key={category} className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+              <p className="text-xs font-bold text-slate-500">
+                {CATEGORY_LABELS[category] || category}
+              </p>
+              <p className="mt-1 font-extrabold text-slate-900">{formatMoney(breakdown.value)}</p>
+              <p className="mt-1 text-xs font-semibold text-slate-500">
+                {breakdown.quantity.toLocaleString('en-IN')} পিস
+              </p>
             </div>
           ))}
         </div>
