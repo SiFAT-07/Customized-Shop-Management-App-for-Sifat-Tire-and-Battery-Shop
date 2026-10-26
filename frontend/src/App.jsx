@@ -356,10 +356,21 @@ export default function App() {
     summary.categoryBreakdown[category].value += stockValue;
     return summary;
   }, { totalUnits: 0, totalValue: 0, categoryBreakdown: {} });
+  const productCategories = Array.from(new Set([
+    ...Object.keys(CATEGORY_LABELS),
+    ...products.map((product) => String(product.category || '').trim()).filter(Boolean)
+  ]));
+  const categoryFilterOptions = productCategories.sort((a, b) => {
+    const aKnown = Object.prototype.hasOwnProperty.call(CATEGORY_LABELS, a);
+    const bKnown = Object.prototype.hasOwnProperty.call(CATEGORY_LABELS, b);
+    if (aKnown && bKnown) return Object.keys(CATEGORY_LABELS).indexOf(a) - Object.keys(CATEGORY_LABELS).indexOf(b);
+    if (aKnown) return -1;
+    if (bKnown) return 1;
+    return a.localeCompare(b, undefined, { sensitivity: 'base' });
+  });
   const displayedProducts = products
     .filter((product) => {
       if (inventoryCategory === 'ALL') return true;
-      if (inventoryCategory === 'OTHER') return !['TIRE', 'BATTERY'].includes(product.category);
       return product.category === inventoryCategory;
     })
     .sort((a, b) => {
@@ -624,23 +635,18 @@ export default function App() {
               </div>
             </div>
 
-            <div className="flex flex-wrap gap-2">
-              {[
-                ['ALL', 'সবগুলো'],
-                ['TIRE', 'টায়ার'],
-                ['BATTERY', 'ব্যাটারি'],
-                ['OTHER', 'মবিল / অন্যান্য']
-              ].map(([value, label]) => (
+            <div className="flex space-x-2 overflow-x-auto py-1 no-scrollbar">
+              {['ALL', ...categoryFilterOptions].map((value) => (
                 <button
                   key={value}
                   onClick={() => setInventoryCategory(value)}
-                  className={`rounded-full border px-3 py-2 text-xs font-bold ${
+                  className={`shrink-0 rounded-full border px-3 py-2 text-xs font-bold ${
                     inventoryCategory === value
                       ? 'border-emerald-700 bg-emerald-700 text-white'
                       : 'border-slate-200 bg-white text-slate-700'
                   }`}
                 >
-                  {label}
+                  {value === 'ALL' ? 'সবগুলো' : CATEGORY_LABELS[value] || value}
                 </button>
               ))}
             </div>
